@@ -93,6 +93,7 @@ __email__ = "niklas.fiekas@backscattering.de"
 __license__ = "GPLv3+"
 
 DEFAULT_ENDPOINT = "https://en.lichess.org/fishnet/"
+DEFAULT_WATKINS_ENDPOINT = "https://tablebase.lichess.org/watkins/"
 STOCKFISH_RELEASES = "https://api.github.com/repos/niklasf/Stockfish/releases/latest"
 DEFAULT_THREADS = 4
 HASH_MIN = 16
@@ -458,7 +459,45 @@ def setoption(p, name, value):
     send(p, "setoption name %s value %s" % (name, value))
 
 
-def go(p, position, moves, movetime=None, depth=None, nodes=None):
+def solve(conf, position, moves, nodes=None):
+    request = ",".join(moves)
+    try:
+        # Query Watkins solution endpoint
+        with http("POST", get_watkins_endpoint(conf), request) as response:
+            data = response.read().decode("utf-8")
+            logging.debug("Got Watkins response: %s", data)
+            moves = json.loads(data)["moves"]
+            if moves:
+                return moves[0]
+    except HttpServerError as err:
+        logging.error("Server error: HTTP %d %s", err.status, err.reason)
+    except HttpClientError as err:
+        try:
+            logging.debug("Client error: HTTP %d %s: %s", err.status, err.reason, err.body.decode("utf-8"))
+            error = json.loads(err.body.decode("utf-8"))["error"]
+            logging.error(error)
+        except (KeyError, ValueError):
+            logging.error("Client error: HTTP %d %s. Request was: %s", err.status, err.reason, request)
+    except Exception:
+        logging.exception("Exception in Watkins worker")
+
+    return None
+
+
+def go(conf, p, variant, position, moves, movetime=None, depth=None, nodes=None):
+    # For analysis (not play), use Watkins antichess solution
+    if variant == "antichess" and depth==None:
+        solution = solve(conf, position, moves, nodes)
+        if solution is not None:
+            # Watkins solution is a win for White
+            # Use len(moves) to determine mate/mated status
+            info = {}
+            info["bestmove"] = solution["uci"]
+            info["nodes"] = solution["nodes"]
+            info["score"] = {"mate": 500 if len(moves) % 2 == 0 else -500}
+            info["string"] = json.dumps(solution)
+            return info
+
     send(p, "position fen %s moves %s" % (position, " ".join(moves)))
     isready(p)
 
@@ -758,7 +797,7 @@ class Worker(threading.Thread):
         movetime = int(round(LVL_MOVETIMES[lvl - 1] / (self.threads * 0.9 ** (self.threads - 1))))
 
         start = time.time()
-        part = go(self.stockfish, job["position"], moves,
+        part = go(self.conf, self.stockfish, job["variant"], job["position"], moves,
                   movetime=movetime, depth=LVL_DEPTHS[lvl - 1])
         end = time.time()
 
@@ -813,7 +852,7 @@ class Worker(threading.Thread):
                         variant,
                         base_url(get_endpoint(self.conf)), job["game_id"], ply)
 
-            part = go(self.stockfish, job["position"], moves[0:ply],
+            part = go(self.conf, self.stockfish, job["variant"], job["position"], moves[0:ply],
                       nodes=nodes, movetime=4000)
 
             if "mate" not in part["score"] and "time" in part and part["time"] < 100:
@@ -1105,8 +1144,12 @@ def load_conf(args):
         conf.set("Fishnet", "Threads", str(args.threads))
     if hasattr(args, "endpoint") and args.endpoint is not None:
         conf.set("Fishnet", "Endpoint", args.endpoint)
+    if hasattr(args, "watkins_endpoint") and args.watkins_endpoint is not None:
+        conf.set("Fishnet", "WatkinsEndpoint", args.watkins_endpoint)
     if hasattr(args, "fixed_backoff") and args.fixed_backoff is not None:
         conf.set("Fishnet", "FixedBackoff", str(args.fixed_backoff))
+    if hasattr(args, "watkins_fixed_backoff") and args.watkins_fixed_backoff is not None:
+        conf.set("Fishnet", "WatkinsFixedBackoff", str(args.watkins_fixed_backoff))
 
     logging.getLogger().addFilter(CensorLogFilter(conf_get(conf, "Key")))
 
@@ -1194,6 +1237,13 @@ def configure(args):
         endpoint = config_input("Fishnet API endpoint (default: %s): " % (endpoint, ), validate_endpoint, out)
 
     conf.set("Fishnet", "Endpoint", endpoint)
+
+    watkins_endpoint = args.waktins_endpoint or DEFAULT_WATKINS_ENDPOINT
+    watkins_fixed_backoff = False
+    if config_input("Configure advanced options? (default: no) ", parse_bool, out):
+        watkins_endpoint = config_input("Watkins API endpoint (default: %s): " % (watkins_endpoint, ), validate_endpoint, out)
+
+    conf.set("Fishnet", "WatkinsEndpoint", watkins_endpoint)
 
     # Change key?
     key = None
@@ -1350,6 +1400,19 @@ def validate_endpoint(endpoint):
 
     return endpoint
 
+def validate_watkins_endpoint(endpoint):
+    if not endpoint or not endpoint.strip():
+        return DEFAULT_WATKINS_ENDPOINT
+
+    if not endpoint.endswith("/"):
+        endpoint += "/"
+
+    url_info = urlparse.urlparse(endpoint)
+    if url_info.scheme not in ["http", "https"]:
+        raise ConfigError("Endpoint does not have http:// or https:// URL scheme")
+
+    return endpoint
+
 
 def validate_key(key, conf, network=False):
     if not key or not key.strip():
@@ -1405,6 +1468,10 @@ def get_stockfish_command(conf, update=True):
 
 def get_endpoint(conf, sub=""):
     return urlparse.urljoin(validate_endpoint(conf_get(conf, "Endpoint")), sub)
+
+
+def get_watkins_endpoint(conf, sub=""):
+    return urlparse.urljoin(validate_watkins_endpoint(conf_get(conf, "WatkinsEndpoint")), sub)
 
 
 def is_production_endpoint(conf):
@@ -1486,6 +1553,9 @@ def cmd_run(args):
     warning = "" if endpoint.startswith("https://") else " (WARNING: not using https)"
     print("Endpoint:         %s%s" % (endpoint, warning))
     print("FixedBackoff:     %s" % parse_bool(conf_get(conf, "FixedBackoff")))
+    watkins_endpoint = get_watkins_endpoint(conf)
+    warning = "" if watkins_endpoint.startswith("https://") else " (WARNING: not using https)"
+    print("WatkinsEndpoint:  %s%s" % (watkins_endpoint, warning))
     print()
 
     if conf.has_section("Stockfish") and conf.items("Stockfish"):
@@ -1631,6 +1701,8 @@ def cmd_systemd(args):
         builder.append(shell_quote(validate_endpoint(args.endpoint)))
     if args.fixed_backoff is not None:
         builder.append("--fixed-backoff" if args.fixed_backoff else "--no-fixed-backoff")
+    if args.watkins_fixed_backoff is not None:
+        builder.append("--watkins-fixed-backoff" if args.watkins_fixed_backoff else "--no-watkins-fixed-backoff")
     if args.auto_update:
         builder.append("--auto-update")
 
@@ -1827,6 +1899,8 @@ def main(argv):
     parser.add_argument("--endpoint", help="lichess http endpoint (default: %s)" % DEFAULT_ENDPOINT)
     parser.add_argument("--fixed-backoff", action="store_true", default=None, help="fixed backoff (only recommended for move servers)")
     parser.add_argument("--no-fixed-backoff", dest="fixed_backoff", action="store_false", default=None)
+    parser.add_argument("--watkins-fixed-backoff", action="store_true", default=None, help="watkins fixed backoff (only recommended for move servers)")
+    parser.add_argument("--no-watkins-fixed-backoff", dest="watkins_fixed_backoff", action="store_false", default=None)
     parser.add_argument("--auto-update", action="store_true", help="automatically install available updates")
 
     parser.add_argument("--socks5-host", type=str, help="use a SOCKS5 proxy (host or host:port)")

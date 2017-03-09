@@ -1,0 +1,3 @@
+[submodule "antichess-tree-server"]
+	path = antichess-tree-server
+	url = https://github.com/niklasf/antichess-tree-server.git
