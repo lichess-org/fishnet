@@ -771,7 +771,7 @@ class Worker(threading.Thread):
                       variant, lvl)
 
         set_variant_options(self.stockfish, job.get("variant", "standard"))
-        setoption(self.stockfish, "Skill Level", int(round((lvl - 1) * 20.0 / 7)))
+        setoption(self.stockfish, "Skill Level", min(20, int(round(lvl * 20.0 / 7))))
         isready(self.stockfish)
 
         movetime = int(round(LVL_MOVETIMES[lvl - 1] / (self.threads * 0.9 ** (self.threads - 1))))
