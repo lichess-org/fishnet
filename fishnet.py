@@ -978,6 +978,10 @@ def download_github_release(conf, release_page, filename):
     path = os.path.join(get_engine_dir(conf), filename)
     logging.info("Engine target path: %s", path)
 
+    if get_engine_pin(conf):
+        logging.info("Engine is pinned, skipping update")
+        return filename
+
     headers = {}
 
     # Only update to newer versions
@@ -1444,6 +1448,10 @@ def conf_get(conf, key, default=None, section="Fishnet"):
 
 def get_engine_dir(conf):
     return validate_engine_dir(conf_get(conf, "EngineDir"))
+
+
+def get_engine_pin(conf):
+    return bool(conf_get(conf, "EnginePinned"))
 
 
 def get_stockfish_command(conf, update=True):
