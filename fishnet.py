@@ -1149,6 +1149,8 @@ def load_conf(args):
 
     if hasattr(args, "engine_dir") and args.engine_dir is not None:
         conf.set("Fishnet", "EngineDir", args.engine_dir)
+    if hasattr(args, "engine_pinned") and args.engine_pinned is not None:
+        conf.set("Fishnet", "EnginePinned", str(args.engine_pinned))
     if hasattr(args, "stockfish_command") and args.stockfish_command is not None:
         conf.set("Fishnet", "StockfishCommand", args.stockfish_command)
     if hasattr(args, "key") and args.key is not None:
@@ -1908,6 +1910,7 @@ def main(argv):
     g = parser.add_argument_group("advanced")
     g.add_argument("--endpoint", help="lichess http endpoint (default: %s)" % DEFAULT_ENDPOINT)
     g.add_argument("--engine-dir", help="engine working directory")
+    g.add_argument("--engine-pinned", action="store_true", default=None, help="don't update the engine from github")
     g.add_argument("--stockfish-command", help="stockfish command (default: download precompiled Stockfish)")
     g.add_argument("--threads-per-process", "--threads", type=int, dest="threads", help="hint for the number of threads to use per engine process (default: %d)" % DEFAULT_THREADS)
     g.add_argument("--fixed-backoff", action="store_true", default=None, help="fixed backoff (only recommended for move servers)")
