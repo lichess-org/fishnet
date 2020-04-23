@@ -1533,7 +1533,7 @@ def validate_threads_per_process(threads, conf):
 def validate_memory(memory, conf):
     cores = validate_cores(conf_get(conf, "Cores"))
     threads = validate_threads_per_process(conf_get(conf, "ThreadsPerProcess"), conf)
-    processes = cores // threads
+    processes = (cores-1) // threads + 1
 
     if not memory or not memory.strip() or memory.strip().lower() == "auto":
         return processes * HASH_DEFAULT
@@ -1685,7 +1685,7 @@ def cmd_run(args):
     print("Cores:            %d" % cores)
 
     threads = validate_threads_per_process(conf_get(conf, "ThreadsPerProcess"), conf)
-    instances = max(1, cores // threads)
+    instances = max(1, (cores-1) // threads + 1)
     print("Engine processes: %d (each ~%d threads)" % (instances, threads))
     memory = validate_memory(conf_get(conf, "Memory"), conf)
     print("Memory:           %d MB" % memory)
