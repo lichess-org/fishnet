@@ -19,16 +19,16 @@ Installation
 
    ```sh
    # After download:
-   chmod +x fishnet-x86_64-unknown-linux-gnu
-   ./fishnet-x86_64-unknown-linux-gnu --auto-update
+   chmod +x fishnet-x86_64-x86_64-unknown-linux-musl
+   ./fishnet-x86_64-x86_64-unknown-linux-musl --auto-update
    ```
 
    Other useful commands:
 
    ```sh
-   ./fishnet-x86_64-unknown-linux-gnu configure # Rerun the configuration dialog
-   ./fishnet-x86_64-unknown-linux-gnu systemd   # Generate a systemd service file
-   ./fishnet-x86_64-unknown-linux-gnu --help    # List all commands and options
+   ./fishnet-x86_64-x86_64-unknown-linux-musl configure # Rerun the configuration dialog
+   ./fishnet-x86_64-x86_64-unknown-linux-musl systemd   # Generate a systemd service file
+   ./fishnet-x86_64-x86_64-unknown-linux-musl --help    # List all commands and options
    ```
 
    **From source**
