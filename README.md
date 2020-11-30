@@ -41,6 +41,13 @@ Installation
    cargo run --release --
    ```
 
+   **Using a local Docker image**
+
+   ```sh
+   docker build -t fishnet .
+   docker run -ti -e CORES=16 -e FISHNET_API_KEY=abcdef fishnet
+   ```
+
 Video introduction
 ------------------
 
