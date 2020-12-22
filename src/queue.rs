@@ -358,16 +358,17 @@ impl QueueActor {
                         };
 
                         if wait >= Duration::from_secs(1) {
-                            if wait >= Duration::from_secs(40) {
-                                self.logger.info(&format!("Going idle for {:?}.", wait));
+                            let backoff = max(self.backoff.next(), wait);
+                            if backoff >= Duration::from_secs(60) {
+                                self.logger.info(&format!("Not enough backlogged jobs. Backing off {:?}.", backoff));
                             } else {
-                                self.logger.debug(&format!("Going idle for {:?}.", wait));
+                                self.logger.debug(&format!("Not enough backlogged jobs. Backing off {:?}.", backoff));
                             }
 
                             tokio::select! {
                                 _ = callback.closed() => break,
                                 _ = self.interrupt.notified() => continue,
-                                _ = time::sleep(wait) => continue,
+                                _ = time::sleep(backoff) => continue,
                             }
                         }
 
@@ -378,7 +379,11 @@ impl QueueActor {
                             }
                             Some(Acquired::NoContent) => {
                                 let backoff = self.backoff.next();
-                                self.logger.debug(&format!("No job received. Backing off {:?}.", backoff));
+                                if backoff >= Duration::from_secs(60) {
+                                    self.logger.info(&format!("No job received. Backing off {:?}.", backoff));
+                                } else {
+                                    self.logger.debug(&format!("No job received. Backing off {:?}.", backoff));
+                                }
                                 tokio::select! {
                                     _ = callback.closed() => break,
                                     _ = self.interrupt.notified() => (),
