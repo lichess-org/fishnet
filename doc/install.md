@@ -36,6 +36,12 @@ For Arch Linux users, the following third-party packages are available on AUR:
 docker run -it --name fishnet -e KEY=abcdef niklasf/fishnet:2
 ```
 
+Per default, runs with `n-1` cores, alternatively, specify the number of cores to use with:
+
+```sh
+docker run -it --name fishnet -e KEY=abcdef -e CORES=n niklasf/fishnet:2
+```
+
 To update, since we named the image `fishnet`:
 
 ```sh
@@ -65,6 +71,11 @@ spec:
       image: niklasf/fishnet:2
       imagePullPolicy: Always
       env:
+        # - name: CORES
+        #   valueFrom:
+        #     configMapKeyRef:
+        #       name: fishnet-config
+        #       key: cores
         - name: KEY
           valueFrom:
             secretKeyRef:
@@ -79,7 +90,17 @@ metadata:
   namespace: fishnet
 data:
   fishnet-private-key: <UPDATE here with your fishnet private key as BASE64 encoded string>
+# ---
+# apiVersion: v1
+# kind: ConfigMap
+# metadata:
+#   name: fishnet-config
+#   namespace: fishnet
+# data:
+#   cores: "4"
 ```
+
+Uncomment the `configMap` to change the number of cores used.
 
 To view logs:
 
