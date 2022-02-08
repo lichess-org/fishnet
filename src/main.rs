@@ -5,6 +5,7 @@ mod assets;
 mod configure;
 mod ipc;
 mod logger;
+mod notation;
 mod queue;
 mod stats;
 mod stockfish;

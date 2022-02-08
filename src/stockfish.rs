@@ -1,6 +1,5 @@
 use std::{io, num::NonZeroU8, path::PathBuf, process::Stdio, time::Duration};
 
-use shakmaty::{fen::fen, variant::Variant};
 use tokio::{
     io::{AsyncBufReadExt as _, AsyncWriteExt as _, BufReader, BufWriter, Lines},
     process::{ChildStdin, ChildStdout, Command},
@@ -257,11 +256,14 @@ impl StockfishActor {
                 .as_bytes(),
             )
             .await?;
-        let variant = Variant::from(position.variant);
         if position.flavor == EngineFlavor::MultiVariant {
             stdin
                 .write_all(
-                    format!("setoption name UCI_Variant value {}\n", variant.uci()).as_bytes(),
+                    format!(
+                        "setoption name UCI_Variant value {}\n",
+                        position.variant.uci()
+                    )
+                    .as_bytes(),
                 )
                 .await?;
         }
@@ -280,7 +282,7 @@ impl StockfishActor {
             .join(" ");
         stdin
             .write_all(
-                format!("position fen {} moves {}\n", fen(&position.root_fen), moves).as_bytes(),
+                format!("position fen {} moves {}\n", &position.root_fen, moves).as_bytes(),
             )
             .await?;
 

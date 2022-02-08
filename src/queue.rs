@@ -6,12 +6,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use shakmaty::{
-    fen::Fen,
-    uci::{IllegalUciError, Uci},
-    variant::VariantPosition,
-    CastlingMode, Position as _, PositionError,
-};
+use shakmaty::{uci::IllegalUciError, variant::VariantPosition, PositionError};
 use tokio::{
     sync::{mpsc, oneshot, Mutex, Notify},
     time,
@@ -19,14 +14,12 @@ use tokio::{
 use url::Url;
 
 use crate::{
-    api::{
-        AcquireQuery, AcquireResponseBody, Acquired, AnalysisPart, ApiStub, BatchId,
-        LichessVariant, Work,
-    },
+    api::{AcquireQuery, AcquireResponseBody, Acquired, AnalysisPart, ApiStub, BatchId, Work},
     assets::{EngineFlavor, EvalFlavor},
     configure::{BacklogOpt, Endpoint},
     ipc::{Position, PositionFailed, PositionId, PositionResponse, Pull},
     logger::{Logger, ProgressAt, QueueStatusBar},
+    notation::{normalize_moves, NormalizeError, Uci, Variant},
     stats::{NpsRecorder, Stats, StatsRecorder},
     util::{NevermindExt as _, RandomizedBackoff},
 };
@@ -230,7 +223,7 @@ impl QueueState {
             match pending.try_into_completed() {
                 Ok(completed) => {
                     let mut extra = Vec::new();
-                    extra.extend(completed.variant.short_name().map(|n| n.to_owned()));
+                    extra.extend(completed.variant.short_name());
                     if completed.flavor.eval_flavor().is_hce() {
                         extra.push("hce".to_owned());
                     }
@@ -504,7 +497,7 @@ impl<T> Skip<T> {
 pub struct IncomingBatch {
     work: Work,
     flavor: EngineFlavor,
-    variant: LichessVariant,
+    variant: Variant,
     positions: Vec<Skip<Position>>,
     url: Option<Url>,
 }
@@ -515,42 +508,15 @@ impl IncomingBatch {
         body: AcquireResponseBody,
     ) -> Result<IncomingBatch, IncomingError> {
         let url = body.batch_url(endpoint);
+        let root_fen = body.position;
 
-        let maybe_root_pos = VariantPosition::from_setup(
-            body.variant.into(),
-            &body.position,
-            CastlingMode::Chess960,
-        );
-
-        let (flavor, root_pos) = match maybe_root_pos {
-            Ok(pos @ VariantPosition::Chess(_)) if body.work.is_analysis() => {
-                (EngineFlavor::Official, pos)
-            }
-            Ok(pos) => (EngineFlavor::MultiVariant, pos),
-            Err(pos) => (
-                EngineFlavor::MultiVariant,
-                pos.ignore_impossible_material()?,
-            ),
-        };
-
-        let root_fen = Fen::from_setup(&root_pos);
-
-        let body_moves = {
-            let mut moves = Vec::with_capacity(body.moves.len());
-            let mut pos = root_pos;
-            for uci in body.moves {
-                let m = uci.to_move(&pos)?;
-                moves.push(m.to_uci(CastlingMode::Chess960));
-                pos.play_unchecked(&m);
-            }
-            moves
-        };
+        let (flavor, body_moves) = normalize_moves(body.variant.clone(), &root_fen, &body.moves)?;
 
         Ok(IncomingBatch {
             work: body.work.clone(),
             url: url.clone(),
             flavor,
-            variant: body.variant,
+            variant: body.variant.clone(),
             positions: match body.work {
                 Work::Move { .. } => {
                     vec![Skip::Present(Position {
@@ -573,7 +539,7 @@ impl IncomingBatch {
                         }),
                         flavor,
                         position_id: PositionId(0),
-                        variant: body.variant,
+                        variant: body.variant.clone(),
                         root_fen: root_fen.clone(),
                         moves: moves.clone(),
                     })];
@@ -588,7 +554,7 @@ impl IncomingBatch {
                             }),
                             flavor,
                             position_id: PositionId(1 + i),
-                            variant: body.variant,
+                            variant: body.variant.clone(),
                             root_fen: root_fen.clone(),
                             moves: moves.clone(),
                         }));
@@ -636,6 +602,7 @@ impl From<&IncomingBatch> for ProgressAt {
 enum IncomingError {
     Position(PositionError<VariantPosition>),
     IllegalUci(IllegalUciError),
+    IllegalUciNormalization(NormalizeError),
     AllSkipped(CompletedBatch),
 }
 
@@ -651,12 +618,19 @@ impl From<IllegalUciError> for IncomingError {
     }
 }
 
+// TODO: handle both types of errors?
+impl From<NormalizeError> for IncomingError {
+    fn from(err: NormalizeError) -> IncomingError {
+        IncomingError::IllegalUciNormalization(err)
+    }
+}
+
 #[derive(Debug, Clone)]
 struct PendingBatch {
     work: Work,
     url: Option<Url>,
     flavor: EngineFlavor,
-    variant: LichessVariant,
+    variant: Variant,
     positions: Vec<Option<Skip<PositionResponse>>>,
     started_at: Instant,
 }
@@ -700,7 +674,7 @@ pub struct CompletedBatch {
     work: Work,
     url: Option<Url>,
     flavor: EngineFlavor,
-    variant: LichessVariant,
+    variant: Variant,
     positions: Vec<Skip<PositionResponse>>,
     started_at: Instant,
     completed_at: Instant,
