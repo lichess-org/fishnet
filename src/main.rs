@@ -122,6 +122,9 @@ async fn run(opt: Opt, logger: &Logger) {
     // To wait for workers and API actor before shutdown.
     let mut join_handles = Vec::new();
 
+    // Initialize rssfish
+    rsffish::init();
+
     // Spawn API actor.
     let api = {
         let (api, api_actor) = api::channel(endpoint.clone(), opt.key, logger.clone());
