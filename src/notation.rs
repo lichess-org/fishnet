@@ -1,4 +1,7 @@
-use rsffish::{availableVariants, positionFromFen, validateFEN};
+use rsffish::{
+    availablePieceChars, availablePromotablePieceChars, availableVariants, positionFromFen,
+    validateFEN,
+};
 use shakmaty::{
     fen::Fen as ShakmatyFen,
     uci::{IllegalUciError, ParseUciError, Uci as ShakmatyUci},
@@ -101,7 +104,7 @@ pub enum Fen {
 impl FromStr for Fen {
     type Err = FenError;
 
-    fn from_str(fen: &str) -> Result<Fen, FenError> {
+    fn from_str(fen: &str) -> Result<Fen, Self::Err> {
         ShakmatyFen::from_ascii(fen.as_bytes()).map_or_else(
             |_| {
                 for v in availableVariants() {
@@ -130,8 +133,17 @@ pub struct Uci {
     notation: String,
 }
 
-fn valid_role(_c: u8) -> bool {
-    true // TODO: implement this properly.
+fn valid_role(c: u8) -> bool {
+    // TODO: this assumes all pieces types are a single u8 byte. not sure that is true.
+    availablePieceChars().as_bytes().iter().any(|n| n == &c)
+}
+
+fn valid_promotable_role(c: u8) -> bool {
+    c == b'+'
+        || availablePromotablePieceChars()
+            .as_bytes()
+            .iter()
+            .any(|n| n == &c)
 }
 
 fn valid_file(c: u8) -> bool {
@@ -140,26 +152,35 @@ fn valid_file(c: u8) -> bool {
 
 fn valid_rank(c: &[u8]) -> bool {
     (c.len() == 1 && (b'0'..=b'9').contains(&c[0]))
-    ||
-    (c.len() == 2 && c[0] == b'1' && c[1] == b'0')
+        || (c.len() == 2 && c[0] == b'1' && c[1] == b'0')
 }
 
 fn valid_square(c: &[u8]) -> bool {
-    valid_file(c[0]) && 
-    (
-        (c.len() == 2 && valid_rank(&c[1..2]))
-        ||
-        (c.len() == 3 && valid_rank(&c[1..3]))
-    )
+    valid_file(c[0])
+        && ((c.len() == 2 && valid_rank(&c[1..2])) || (c.len() == 3 && valid_rank(&c[1..3])))
+}
+
+fn valid_square_pair(c: &[u8]) -> bool {
+    match c.len() {
+        4 => valid_square(&c[0..2]) && valid_square(&c[2..4]), // d8d9 | d8d9
+        5 => {
+            valid_square(&c[0..2]) && valid_square(&c[2..4])
+                || valid_square(&c[0..2]) && valid_square(&c[2..5])
+        } // d8d10 | d8d10 | d10d8
+        6 => valid_square(&c[0..3]) && valid_square(&c[3..6]), // d10d11
+        _ => false,
+    }
 }
 
 impl Uci {
     pub fn null() -> Uci {
-        Uci{notation: "0000".to_string()}
+        Uci {
+            notation: "0000".to_string(),
+        }
     }
 
     pub fn from_ascii(uci: &[u8]) -> Result<Uci, UciParseError> {
-        if uci.len() != 4 && uci.len() != 5 && uci.len() != 6 {
+        if uci.len() != 4 && uci.len() != 5 && uci.len() != 6 && uci.len() == 7 {
             return Err(UciParseError::InvalidUci);
         }
 
@@ -167,28 +188,24 @@ impl Uci {
             return Ok(Uci::null());
         }
 
-        if match (uci[1], uci[2], uci.len()) {
-            (_, _, 6) => {
-                valid_square(&uci[0..3]) && valid_square(&uci[3..6])
-            },
-            (b'@', _, 4) => {
-                valid_role(uci[0]) && valid_square(&uci[2..4])
-            },
-            (b'@', _, 5) => {
-                valid_role(uci[0]) && valid_square(&uci[2..5])
-            },
-            (_, _, 4) => {
-                valid_square(&uci[0..2]) && valid_square(&uci[2..4])
-            },
-            (_, _, 5) => {
-                (valid_square(&uci[0..2]) && valid_square(&uci[2..5]))
-                ||
-                (valid_square(&uci[0..3]) && valid_square(&uci[3..5]))
-            },
-            _ => false
+        let is_drop = valid_role(uci[0]) && uci[1] == b'@';
+        let is_promotion = valid_promotable_role(uci[uci.len() - 1]);
+
+        if match (is_drop, is_promotion, uci.len()) {
+            // Drops
+            (true, false, 4 | 5) => valid_role(uci[0]) && valid_square(&uci[2..uci.len()]), // P@b4
+            // Promotions
+            (false, true, 5 | 6 | 7) => valid_square_pair(&uci[0..uci.len() - 1]), // d8d9+ | d8d9R
+            // moves
+            (false, false, 4 | 5 | 6) => valid_square_pair(&uci[0..uci.len()]), // d8d9 | d9d11 | d10d11
+
+            // Bleh
+            _ => false,
         } {
             unsafe {
-                Ok(Uci{notation: String::from_utf8_unchecked(uci.to_vec())})
+                Ok(Uci {
+                    notation: String::from_utf8_unchecked(uci.to_vec()),
+                })
             }
         } else {
             Err(UciParseError::InvalidUci)
@@ -211,7 +228,7 @@ pub enum UciParseError {
 impl fmt::Display for UciParseError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match *self {
-            UciParseError::InvalidUci => "invalid fen",
+            UciParseError::InvalidUci => "invalid uci",
         })
     }
 }
@@ -219,8 +236,8 @@ impl fmt::Display for UciParseError {
 impl FromStr for Uci {
     type Err = UciParseError;
 
-    fn from_str(fen: &str) -> Result<Uci, UciParseError> {
-        Uci::from_ascii(fen.as_bytes())
+    fn from_str(uci: &str) -> Result<Uci, UciParseError> {
+        Uci::from_ascii(uci.as_bytes())
     }
 }
 

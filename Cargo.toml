@@ -36,7 +36,7 @@ self_update = { version = "0.28", features = ["rustls"], default-features = fals
 serde = "1"
 serde_json = "1"
 serde_with = "1"
-rsffish = "0.1.2"
+rsffish = "0.0.7"
 home = "0.5"
 shakmaty = { version = "0.20", features = ["variant"] }
 shell-escape = "0.1"
