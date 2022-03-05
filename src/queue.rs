@@ -2,11 +2,16 @@ use std::{
     cmp::{max, min},
     collections::{hash_map::Entry, HashMap, VecDeque},
     convert::TryInto,
+    num::NonZeroUsize,
     sync::Arc,
     time::{Duration, Instant},
 };
 
-use shakmaty::{uci::IllegalUciError, variant::VariantPosition, PositionError};
+use shakmaty::{
+    uci::IllegalUciError,
+    variant::VariantPosition,
+    CastlingMode, EnPassantMode, Position as _, PositionError,
+};
 use tokio::{
     sync::{mpsc, oneshot, Mutex, Notify},
     time,
@@ -26,7 +31,7 @@ use crate::{
 
 pub fn channel(
     opt: BacklogOpt,
-    cores: usize,
+    cores: NonZeroUsize,
     api: ApiStub,
     max_backoff: Duration,
     logger: Logger,
@@ -111,7 +116,7 @@ impl QueueStub {
 
 struct QueueState {
     shutdown_soon: bool,
-    cores: usize,
+    cores: NonZeroUsize,
     incoming: VecDeque<Position>,
     pending: HashMap<BatchId, PendingBatch>,
     move_submissions: VecDeque<CompletedBatch>,
@@ -120,7 +125,7 @@ struct QueueState {
 }
 
 impl QueueState {
-    fn new(cores: usize, logger: Logger) -> QueueState {
+    fn new(cores: NonZeroUsize, logger: Logger) -> QueueState {
         QueueState {
             shutdown_soon: false,
             cores,
@@ -277,7 +282,8 @@ impl QueueState {
                     if !pending.work.matrix_wanted() {
                         // Send partially analysis as progress report.
                         let progress_report = pending.progress_report();
-                        if progress_report.iter().filter(|p| p.is_some()).count() % (self.cores * 2)
+                        if progress_report.iter().filter(|p| p.is_some()).count()
+                            % (self.cores.get() * 2)
                             == 0
                         {
                             queue.api.submit_analysis(

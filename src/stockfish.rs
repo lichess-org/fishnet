@@ -1,5 +1,6 @@
 use std::{io, num::NonZeroU8, path::PathBuf, process::Stdio, time::Duration};
 
+use shakmaty::variant::Variant;
 use tokio::{
     io::{AsyncBufReadExt as _, AsyncWriteExt as _, BufReader, BufWriter, Lines},
     process::{ChildStdin, ChildStdout, Command},
@@ -281,9 +282,7 @@ impl StockfishActor {
             .collect::<Vec<_>>()
             .join(" ");
         stdin
-            .write_all(
-                format!("position fen {} moves {}\n", &position.root_fen, moves).as_bytes(),
-            )
+            .write_all(format!("position fen {} moves {}\n", position.root_fen, moves).as_bytes())
             .await?;
 
         // Go.

@@ -4,6 +4,7 @@ use std::{
     fs::{File, OpenOptions},
     io,
     io::{Read as _, Seek as _, SeekFrom, Write as _},
+    num::NonZeroUsize,
     path::PathBuf,
     time::Duration,
 };
@@ -64,7 +65,7 @@ impl Stats {
 }
 
 impl StatsRecorder {
-    pub fn open(cores: usize) -> StatsRecorder {
+    pub fn open(cores: NonZeroUsize) -> StatsRecorder {
         let (stats, stats_file) = match stats_path().and_then(|path| {
             OpenOptions::new()
                 .read(true)
@@ -144,9 +145,9 @@ pub struct NpsRecorder {
 }
 
 impl NpsRecorder {
-    fn new(cores: usize) -> NpsRecorder {
+    fn new(cores: NonZeroUsize) -> NpsRecorder {
         NpsRecorder {
-            nps: 400_000 * cores as u32, // start with a low estimate
+            nps: 400_000 * cores.get() as u32, // start with a low estimate
             uncertainty: 1.0,
         }
     }

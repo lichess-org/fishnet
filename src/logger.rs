@@ -2,6 +2,7 @@ use std::{
     cmp::{max, min},
     fmt, io,
     io::Write as _,
+    num::NonZeroUsize,
     sync::{Arc, Mutex},
 };
 
@@ -163,14 +164,14 @@ impl LoggerState {
 
 pub struct QueueStatusBar {
     pub pending: usize,
-    pub cores: usize,
+    pub cores: NonZeroUsize,
 }
 
 impl fmt::Display for QueueStatusBar {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let width = 16;
-        let virtual_width = max(self.cores * 3, 16);
-        let cores_width = self.cores * width / virtual_width;
+        let virtual_width = max(self.cores.get() * 3, 16);
+        let cores_width = self.cores.get() * width / virtual_width;
         let pending_width = self.pending * width / virtual_width;
         let overhang_width = pending_width.saturating_sub(cores_width);
         let empty_width = width

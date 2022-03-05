@@ -1,11 +1,11 @@
 use std::{
-    cmp::max,
     error::Error,
     fmt, fs, io,
     io::Write,
     num::{NonZeroUsize, ParseIntError},
     path::PathBuf,
     str::FromStr,
+    thread::available_parallelism,
     time::Duration,
 };
 
@@ -19,7 +19,7 @@ const DEFAULT_ENDPOINT: &str = "https://lichess.org/fishnet";
 
 /// Distributed Stockfish analysis for lichess.org.
 #[derive(Debug, Parser)]
-#[clap(setting = clap::AppSettings::DisableHelpSubcommand, version)]
+#[clap(version, disable_help_subcommand = true)]
 pub struct Opt {
     #[clap(flatten)]
     pub verbose: Verbose,
@@ -187,12 +187,14 @@ impl fmt::Display for Cores {
     }
 }
 
-impl From<Cores> for usize {
-    fn from(cores: Cores) -> usize {
-        match cores {
-            Cores::Number(n) => usize::from(n),
-            Cores::Auto => max(1, num_cpus::get() - 1),
-            Cores::All => num_cpus::get(),
+impl Cores {
+    pub fn number(self) -> NonZeroUsize {
+        let num_cpus = available_parallelism().expect("num cpus");
+        match self {
+            Cores::Number(n) => n,
+            Cores::Auto => NonZeroUsize::new(num_cpus.get() - 1)
+                .unwrap_or_else(|| NonZeroUsize::new(1).unwrap()),
+            Cores::All => num_cpus,
         }
     }
 }
@@ -464,8 +466,8 @@ pub async fn parse_and_configure() -> Opt {
             eprintln!();
             loop {
                 let mut cores = String::new();
-                let all = num_cpus::get();
-                let auto = max(all - 1, 1);
+                let all = Cores::All.number();
+                let auto = Cores::Auto.number();
                 eprint!(
                     "Number of logical cores to use for engine threads (default {}, max {}): ",
                     auto, all
@@ -479,7 +481,7 @@ pub async fn parse_and_configure() -> Opt {
                     .filter(|c| !c.is_empty())
                     .map_or(Ok(Cores::Auto), Cores::from_str)
                 {
-                    Ok(Cores::Number(n)) if usize::from(n) > all => {
+                    Ok(Cores::Number(n)) if n > all => {
                         eprintln!("At most {} logical cores available on your machine.", all);
                     }
                     Ok(cores) => {
@@ -570,9 +572,9 @@ pub async fn parse_and_configure() -> Opt {
     }
 
     // Validate number of cores.
-    let all = num_cpus::get();
+    let all = Cores::All.number();
     match opt.cores {
-        Some(Cores::Number(n)) if usize::from(n) > all => {
+        Some(Cores::Number(n)) if n > all => {
             logger.warn(&format!(
                 "Requested logical {} cores, but only {} available. Capped.",
                 n, all
