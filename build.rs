@@ -86,7 +86,7 @@ impl Target {
                 .env(
                     "CXXFLAGS",
                     format!(
-                        "{} -DNNUE_EMBEDDING_OFF",
+                        "{} -DNNUE_EMBEDDING_OFF -DLARGEBOARDS",
                         env::var("CXXFLAGS").unwrap_or_default()
                     )
                 )
