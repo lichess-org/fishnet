@@ -284,7 +284,7 @@ pub fn normalize_moves(
     match (fen, variant) {
         (Fen::Shakmaty(fen), Variant::Lichess(variant)) => {
             let maybe_root_pos =
-                VariantPosition::from_setup(variant.into(), fen, CastlingMode::Chess960);
+                VariantPosition::from_setup(variant.into(), fen.clone().into_setup(), CastlingMode::Chess960);
 
             let (flavor, root_pos) = match maybe_root_pos {
                 Ok(pos @ VariantPosition::Chess(_)) => (EngineFlavor::Official, pos),

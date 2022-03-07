@@ -7,11 +7,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use shakmaty::{
-    uci::IllegalUciError,
-    variant::VariantPosition,
-    CastlingMode, EnPassantMode, Position as _, PositionError,
-};
+use shakmaty::{uci::IllegalUciError, variant::VariantPosition, PositionError};
 use tokio::{
     sync::{mpsc, oneshot, Mutex, Notify},
     time,

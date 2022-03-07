@@ -1,6 +1,5 @@
 use std::{io, num::NonZeroU8, path::PathBuf, process::Stdio, time::Duration};
 
-use shakmaty::variant::Variant;
 use tokio::{
     io::{AsyncBufReadExt as _, AsyncWriteExt as _, BufReader, BufWriter, Lines},
     process::{ChildStdin, ChildStdout, Command},
