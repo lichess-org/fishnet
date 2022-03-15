@@ -156,7 +156,7 @@ fn valid_rank(c: &[u8]) -> bool {
 }
 
 fn valid_square(c: &[u8]) -> bool {
-    valid_file(c[0])
+    (!c.is_empty() && valid_file(c[0]))
         && ((c.len() == 2 && valid_rank(&c[1..2])) || (c.len() == 3 && valid_rank(&c[1..3])))
 }
 
@@ -164,7 +164,7 @@ fn valid_square_pair(c: &[u8]) -> bool {
     match c.len() {
         4 => valid_square(&c[0..2]) && valid_square(&c[2..4]), // d8d9 | d8d9
         5 => {
-            valid_square(&c[0..2]) && valid_square(&c[2..4])
+            valid_square(&c[0..3]) && valid_square(&c[3..5])
                 || valid_square(&c[0..2]) && valid_square(&c[2..5])
         } // d8d10 | d8d10 | d10d8
         6 => valid_square(&c[0..3]) && valid_square(&c[3..6]), // d10d11
@@ -180,7 +180,7 @@ impl Uci {
     }
 
     pub fn from_ascii(uci: &[u8]) -> Result<Uci, UciParseError> {
-        if uci.len() != 4 && uci.len() != 5 && uci.len() != 6 && uci.len() == 7 {
+        if uci.len() < 4 || uci.len() > 7 {
             return Err(UciParseError::InvalidUci);
         }
 
@@ -195,7 +195,7 @@ impl Uci {
             // Drops
             (true, false, 4 | 5) => valid_role(uci[0]) && valid_square(&uci[2..uci.len()]), // P@b4
             // Promotions
-            (false, true, 5 | 6 | 7) => valid_square_pair(&uci[0..uci.len() - 1]), // d8d9+ | d8d9R
+            (false, true, 5 | 6 | 7) => valid_square_pair(&uci[0..uci.len() - 1]), // d8d9+ | d8d9R | d10d11+
             // moves
             (false, false, 4 | 5 | 6) => valid_square_pair(&uci[0..uci.len()]), // d8d9 | d9d11 | d10d11
 
