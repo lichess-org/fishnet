@@ -1,5 +1,5 @@
 use rsffish::{
-    availablePieceChars, availablePromotablePieceChars, availableVariants, positionFromFen,
+    availablePieceChars, availableVariants, positionFromFen,
     validateFEN,
 };
 use shakmaty::{
@@ -140,7 +140,7 @@ fn valid_role(c: u8) -> bool {
 
 fn valid_promotable_role(c: u8) -> bool {
     c == b'+'
-        || availablePromotablePieceChars()
+        || availablePieceChars()
             .as_bytes()
             .iter()
             .any(|n| n == &c)
