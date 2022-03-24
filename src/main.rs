@@ -15,6 +15,7 @@ mod util;
 use std::{
     cmp::min,
     env,
+    fs::read_to_string,
     path::PathBuf,
     sync::Arc,
     thread,
@@ -115,25 +116,11 @@ async fn run(opt: Opt, logger: &Logger) {
 
     // Initialize rssfish
     rsffish::init();
-    rsffish::loadVariantConfig(&"[flipersi]
-immobile = p
-startFen = 8/8/8/8/8/8/8/8[PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPpppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppp] w 0 1
-pieceDrops = true
-promotionPieceTypes = -
-doubleStep = false
-castling = false
-stalemateValue = loss
-stalematePieceCount = true
-materialCounting = unweighted
-enclosingDrop = reversi
-enclosingDropStart = d4 e4 d5 e5
-immobilityIllegal = false
-flipEnclosedPieces = reversi
-passOnStalemate = false
-[flipello:flipersi]
-startFen = 8/8/8/3pP3/3Pp3/8/8/8[PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPpppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppp] w 0 1
-passOnStalemate = true
-".to_string());
+    if let Some(f) = opt.variants_ini_file.clone() {
+        if let Ok(variant_config) = read_to_string(f) {
+            rsffish::loadVariantConfig(&variant_config);
+        }
+    }
 
     // Spawn API actor.
     let api = {
