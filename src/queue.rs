@@ -3,6 +3,7 @@ use std::{
     collections::{hash_map::Entry, HashMap, VecDeque},
     convert::TryInto,
     num::NonZeroUsize,
+    path::PathBuf,
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -27,6 +28,7 @@ use crate::{
 
 pub fn channel(
     opt: BacklogOpt,
+    variants_ini_file: Option<PathBuf>,
     cores: NonZeroUsize,
     api: ApiStub,
     max_backoff: Duration,
@@ -47,6 +49,7 @@ pub fn channel(
         state,
         api,
         opt,
+        variants_ini_file,
         logger,
         backoff: RandomizedBackoff::new(max_backoff),
     };
@@ -309,6 +312,7 @@ pub struct QueueActor {
     state: Arc<Mutex<QueueState>>,
     api: ApiStub,
     opt: BacklogOpt,
+    variants_ini_file: Option<PathBuf>,
     backoff: RandomizedBackoff,
     logger: Logger,
 }
@@ -362,7 +366,7 @@ impl QueueActor {
             position_id: None,
         };
 
-        match IncomingBatch::from_acquired(self.api.endpoint(), body) {
+        match IncomingBatch::from_acquired(self.api.endpoint(), body, self.variants_ini_file.clone()) {
             Ok(incoming) => {
                 let mut state = self.state.lock().await;
                 state.add_incoming_batch(incoming);
@@ -508,6 +512,7 @@ impl IncomingBatch {
     fn from_acquired(
         endpoint: &Endpoint,
         body: AcquireResponseBody,
+        variants_ini_file: Option<PathBuf>,
     ) -> Result<IncomingBatch, IncomingError> {
         let url = body.batch_url(endpoint);
         let root_fen = body.position;
@@ -527,6 +532,7 @@ impl IncomingBatch {
                         flavor,
                         position_id: PositionId(0),
                         variant: body.variant,
+                        variants_ini_file,
                         root_fen,
                         moves: body_moves,
                     })]
@@ -542,6 +548,7 @@ impl IncomingBatch {
                         flavor,
                         position_id: PositionId(0),
                         variant: body.variant.clone(),
+                        variants_ini_file: variants_ini_file.clone(),
                         root_fen: root_fen.clone(),
                         moves: moves.clone(),
                     })];
@@ -557,6 +564,7 @@ impl IncomingBatch {
                             flavor,
                             position_id: PositionId(1 + i),
                             variant: body.variant.clone(),
+                            variants_ini_file: variants_ini_file.clone(),
                             root_fen: root_fen.clone(),
                             moves: moves.clone(),
                         }));

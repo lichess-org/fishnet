@@ -206,17 +206,21 @@ impl StockfishActor {
         &mut self,
         stdout: &mut Stdout,
         stdin: &mut BufWriter<ChildStdin>,
+        variants_ini_file: Option<PathBuf>,
     ) -> io::Result<()> {
         if let Some(init) = self.init.take() {
             stdin
                 .write_all(format!("setoption name EvalFile value {}\n", init.nnue).as_bytes())
                 .await?;
             stdin
-                .write_all(format!("setoption name VariantPath value {}\n", "/home/lakin/work-repos/mso/fishnet/variants.ini").as_bytes())
-                .await?;
-            stdin
                 .write_all(b"setoption name UCI_Chess960 value true\n")
                 .await?;
+            if let Some(f) = variants_ini_file.and_then(|v| v.to_str().map(|v| v.to_owned())) {
+                stdin
+                    .write_all(format!("setoption name VariantPath value {}\n", f).as_bytes())
+                    .await?;
+            }
+
             stdin.write_all(b"isready\n").await?;
             stdin.flush().await?;
 
@@ -244,8 +248,7 @@ impl StockfishActor {
         position: Position,
     ) -> io::Result<PositionResponse> {
         // Set global options (once).
-        self.init(stdout, stdin).await?;
-
+        self.init(stdout, stdin, position.variants_ini_file).await?;
         // Clear hash.
         stdin.write_all(b"ucinewgame\n").await?;
 

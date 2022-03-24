@@ -155,6 +155,7 @@ passOnStalemate = true
     let mut queue = {
         let (queue, queue_actor) = queue::channel(
             opt.backlog,
+            opt.variants_ini_file,
             cores,
             api,
             opt.max_backoff.into(),

@@ -59,6 +59,10 @@ pub struct Opt {
     #[clap(long, default_value = "30s", global = true)]
     pub max_backoff: ParsedDuration,
 
+    /// variants_ini_file
+    #[clap(long, parse(from_os_str), global = true)]
+    pub variants_ini_file: Option<PathBuf>,
+
     #[clap(flatten)]
     pub backlog: BacklogOpt,
 

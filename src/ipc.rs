@@ -1,4 +1,4 @@
-use std::{num::NonZeroU8, time::Duration};
+use std::{num::NonZeroU8, time::Duration, path::PathBuf};
 
 use tokio::sync::oneshot;
 use url::Url;
@@ -21,6 +21,7 @@ pub struct Position {
     pub url: Option<Url>,
 
     pub variant: Variant,
+    pub variants_ini_file: Option<PathBuf>,
     pub root_fen: Fen,
     pub moves: Vec<Uci>,
 }
