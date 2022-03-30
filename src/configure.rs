@@ -54,7 +54,7 @@ pub struct Opt {
     #[clap(long, alias = "threads", global = true)]
     pub cores: Option<Cores>,
 
-    /// Maximum backoff time. The client will use randomized expontential
+    /// Maximum backoff time. The client will use randomized exponential
     /// backoff when repeatedly receiving no job.
     #[clap(long, default_value = "30s", global = true)]
     pub max_backoff: ParsedDuration,
