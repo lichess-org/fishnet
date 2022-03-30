@@ -272,7 +272,8 @@ async fn worker(i: usize, assets: Arc<Assets>, tx: mpsc::Sender<Pull>, logger: L
     };
     let mut engine_backoff = RandomizedBackoff::default();
 
-    let default_budget = Duration::from_secs(60);
+    // TODO: this needs to be configurable, some of the multi-variant variants take way longer. :(
+    let default_budget = Duration::from_secs(600);
     let mut budget = default_budget;
 
     loop {
