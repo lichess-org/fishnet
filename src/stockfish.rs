@@ -375,12 +375,14 @@ impl StockfishActor {
                     if scores.best().is_none() {
                         return Err(io::Error::new(io::ErrorKind::InvalidData, "missing score"));
                     }
+                    let best_move = parts.next().and_then(|m| m.parse().ok());
+                    self.logger.debug(&format!("Sending bestmove: {:?}", best_move));
 
                     return Ok(PositionResponse {
                         work: position.work,
                         position_id: position.position_id,
                         url: position.url,
-                        best_move: parts.next().and_then(|m| m.parse().ok()),
+                        best_move,
                         scores,
                         depth,
                         pvs,
