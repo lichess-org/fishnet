@@ -55,8 +55,8 @@ impl Variant {
 impl FromStr for Variant {
     type Err = VariantError;
 
-    fn from_str(fen: &str) -> Result<Variant, VariantError> {
-        match fen {
+    fn from_str(variant_name: &str) -> Result<Variant, VariantError> {
+        match &variant_name.to_lowercase()[..] {
             "antichess" => Ok(Variant::Lichess(LichessVariant::Antichess)),
             "atomic" => Ok(Variant::Lichess(LichessVariant::Atomic)),
             "chess960" => Ok(Variant::Lichess(LichessVariant::Chess960)),
@@ -67,8 +67,8 @@ impl FromStr for Variant {
             "racingkings" => Ok(Variant::Lichess(LichessVariant::RacingKings)),
             "threecheck" => Ok(Variant::Lichess(LichessVariant::ThreeCheck)),
             "standard" => Ok(Variant::Lichess(LichessVariant::Standard)),
-            fen => match availableVariants().iter().find(|&v| v == fen) {
-                Some(_) => Ok(Variant::FairyStockfish(fen.to_string())),
+            variant_name => match availableVariants().iter().find(|&v| v == variant_name) {
+                Some(_) => Ok(Variant::FairyStockfish(variant_name.to_string())),
                 None => Err(VariantError::InvalidVariant),
             },
         }
