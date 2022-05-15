@@ -1,7 +1,4 @@
-use rsffish::{
-    availablePieceChars, availableVariants, positionFromFen,
-    validateFEN,
-};
+use rsffish::{availablePieceChars, availableVariants, positionFromFen, validateFEN};
 use shakmaty::{
     fen::Fen as ShakmatyFen,
     uci::{IllegalUciError, ParseUciError, Uci as ShakmatyUci},
@@ -139,11 +136,7 @@ fn valid_role(c: u8) -> bool {
 }
 
 fn valid_promotable_role(c: u8) -> bool {
-    c == b'+'
-        || availablePieceChars()
-            .as_bytes()
-            .iter()
-            .any(|n| n == &c)
+    c == b'+' || availablePieceChars().as_bytes().iter().any(|n| n == &c)
 }
 
 fn valid_file(c: u8) -> bool {
@@ -283,8 +276,11 @@ pub fn normalize_moves(
 ) -> Result<(EngineFlavor, Vec<Uci>), NormalizeError> {
     match (fen, variant) {
         (Fen::Shakmaty(fen), Variant::Lichess(variant)) => {
-            let maybe_root_pos =
-                VariantPosition::from_setup(variant.into(), fen.clone().into_setup(), CastlingMode::Chess960);
+            let maybe_root_pos = VariantPosition::from_setup(
+                variant.into(),
+                fen.clone().into_setup(),
+                CastlingMode::Chess960,
+            );
 
             let (flavor, root_pos) = match maybe_root_pos {
                 Ok(pos @ VariantPosition::Chess(_)) => (EngineFlavor::Official, pos),
