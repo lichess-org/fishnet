@@ -323,6 +323,11 @@ pub fn normalize_moves(
             }
             Ok((EngineFlavor::MultiVariant, moves.to_vec()))
         }
+        (Fen::Shakmaty(fen), Variant::FairyStockfish(variant_name)) => normalize_moves(
+            Variant::FairyStockfish(variant_name),
+            &Fen::FairyStockfish(fen.to_string()),
+            moves,
+        ),
         _ => Err(NormalizeError::InvalidArgs),
     }
 }
