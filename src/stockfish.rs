@@ -212,9 +212,11 @@ impl StockfishActor {
             stdin
                 .write_all(format!("setoption name EvalFile value {}\n", init.nnue).as_bytes())
                 .await?;
-            stdin
-                .write_all(b"setoption name UCI_Chess960 value true\n")
-                .await?;
+            if position.flavor != EngineFlavor::MultiVariant {
+                stdin
+                    .write_all(b"setoption name UCI_Chess960 value true\n")
+                    .await?;
+            }
             if position.flavor == EngineFlavor::MultiVariant {
                 if let Some(f) = position
                     .clone()
