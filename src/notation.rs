@@ -307,17 +307,21 @@ pub fn normalize_moves(
             Ok((flavor, normalized_moves))
         }
         (Fen::FairyStockfish(fen), Variant::FairyStockfish(variant_name)) => {
-            let mut new_moves: Vec<Uci> = Vec::with_capacity(moves.len());
+            let mut new_moves: Vec<String> = Vec::with_capacity(moves.len());
             let mut pos = positionFromFen(&variant_name, fen, false);
             for uci in moves {
                 if pos.getLegalMoves().iter().any(|m| m == &uci.notation) {
-                    new_moves.push(uci.clone());
+                    new_moves.push(uci.notation.clone());
                     pos = pos.makeMoves(&vec![uci.notation.clone()]);
                 } else {
                     return Err(NormalizeError::InvalidArgs);
                 }
             }
-            Ok((EngineFlavor::MultiVariant, moves.to_vec()))
+            let mut _960_moves : Vec<Uci> = Vec::with_capacity(moves.len());
+            for notation in rsffish::to960Uci(&variant_name, &new_moves.to_vec()) {
+                _960_moves.push(Uci{notation});
+            }
+            Ok((EngineFlavor::MultiVariant, _960_moves.to_vec()))
         }
         (Fen::Shakmaty(fen), Variant::FairyStockfish(variant_name)) => normalize_moves(
             Variant::FairyStockfish(variant_name),
