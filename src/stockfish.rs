@@ -1,4 +1,5 @@
 use std::{io, num::NonZeroU8, path::PathBuf, process::Stdio, time::Duration};
+use crate::notation::Variant;
 
 use tokio::{
     io::{AsyncBufReadExt as _, AsyncWriteExt as _, BufReader, BufWriter, Lines},
@@ -212,11 +213,9 @@ impl StockfishActor {
             stdin
                 .write_all(format!("setoption name EvalFile value {}\n", init.nnue).as_bytes())
                 .await?;
-            if position.flavor != EngineFlavor::MultiVariant {
-                stdin
-                    .write_all(b"setoption name UCI_Chess960 value true\n")
-                    .await?;
-            }
+            stdin
+                .write_all(b"setoption name UCI_Chess960 value true\n")
+                .await?;
             if position.flavor == EngineFlavor::MultiVariant {
                 if let Some(f) = position
                     .clone()
