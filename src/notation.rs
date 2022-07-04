@@ -140,7 +140,7 @@ fn valid_promotable_role(c: u8) -> bool {
 }
 
 fn valid_file(c: u8) -> bool {
-    (b'a'..=b'j').contains(&c)
+    (b'a'..=b'k').contains(&c)
 }
 
 fn valid_rank(c: &[u8]) -> bool {
