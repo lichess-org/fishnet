@@ -94,6 +94,12 @@ impl Target {
             "$(CXX) --version"
         );
 
+        assert!(
+            Path::new(src_dir).is_dir(),
+            "Directory {} does not exist. Did you clone with `--recursive` to load submodules?",
+            src_dir
+        );
+
         if flavor == Flavor::Official
             && !Command::new(&make)
                 .current_dir(src_dir)
