@@ -268,7 +268,6 @@ impl From<IllegalUciError> for NormalizeError {
 }
 
 // TODO: figure out why only analysis is mapped ot official stockfish?
-// TODO: are the chess960 booleans indicative of  chess960 castling?
 pub fn normalize_moves(
     variant: Variant,
     fen: &Fen,
