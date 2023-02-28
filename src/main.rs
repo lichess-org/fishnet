@@ -13,7 +13,7 @@ mod systemd;
 mod util;
 
 use std::{
-    cmp::min,
+    cmp::max,
     env,
     fs::read_to_string,
     path::PathBuf,
@@ -272,8 +272,7 @@ async fn worker(i: usize, assets: Arc<Assets>, tx: mpsc::Sender<Pull>, logger: L
     };
     let mut engine_backoff = RandomizedBackoff::default();
 
-    // TODO: this needs to be configurable, some of the multi-variant variants take way longer. :(
-    let default_budget = Duration::from_secs(600);
+    let default_budget = Duration::from_secs(300);
     let mut budget = default_budget;
 
     loop {
@@ -317,13 +316,19 @@ async fn worker(i: usize, assets: Arc<Assets>, tx: mpsc::Sender<Pull>, logger: L
                     });
                     (sf, join_handle)
                 };
-
             // Provide time budget.
-            budget = min(default_budget, budget) + job.work.timeout();
+            // TODO: I changed the `min` call to a `max` call. This effectively means that 
+            //       nothing will ever time out due to this budget. Once we figure out the
+            //       correct node and timeout limits on the lila side for all of our variants
+            //       we'll want to change it back
+            // budget = min(default_budget, budget) + job.work.timeout();
+            budget = max(default_budget, budget) + job.work.timeout();
+            logger.info(&format!("Starting a job with {:?} budget ", budget));
 
             // Analyse or play.
             let timer = Instant::now();
             let batch_id = job.work.id();
+            let variant_name = job.variant.clone().uci();
             let res = tokio::select! {
                 _ = tx.closed() => {
                     logger.debug(&format!("Worker {} shutting down engine early", i));
@@ -348,7 +353,7 @@ async fn worker(i: usize, assets: Arc<Assets>, tx: mpsc::Sender<Pull>, logger: L
                 }
                 _ = time::sleep(budget) => {
                     logger.warn(&match flavor {
-                        EngineFlavor::Official => format!("Official Stockfish timed out in worker {}. If this happens frequently it is better to stop and defer to clients with better hardware. Context: {}", i, context),
+                        EngineFlavor::Official => format!("Official Stockfish timed out in worker {}. If this happens frequently it is better to stop and defer to clients with better hardware. Context: {} budget: {:?}", i, context, budget),
                         EngineFlavor::MultiVariant => format!("Fairy-Stockfish timed out in worker {}. Context: {}", i, context),
                     });
                     drop(sf);
@@ -358,7 +363,9 @@ async fn worker(i: usize, assets: Arc<Assets>, tx: mpsc::Sender<Pull>, logger: L
             };
 
             // Update time budget.
-            budget = budget.checked_sub(timer.elapsed()).unwrap_or_default();
+            let elapsed = timer.elapsed();
+            logger.info(&format!("Finished a {:?} job using {:?} seconds ", variant_name, elapsed));
+            budget = budget.checked_sub(elapsed).unwrap_or_default();
             if budget < default_budget {
                 logger.debug(&format!("Low engine timeout budget: {:?}", budget));
             }
