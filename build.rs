@@ -4,7 +4,7 @@ use std::{env, fs, fs::File, io, path::Path, process::Command};
 
 use glob::glob;
 
-const EVAL_FILE: &str = "nn-5af11540bbfe.nnue";
+const EVAL_FILE: &str = "nn-3475407dc199.nnue";
 
 fn has_target_feature(feature: &str) -> bool {
     env::var("CARGO_CFG_TARGET_FEATURE")
