@@ -10,9 +10,8 @@ use ar::Archive;
 use bitflags::bitflags;
 use serde::Serialize;
 use tempfile::TempDir;
-use xz2::read::XzDecoder;
 
-static ASSETS_AR_XZ: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/assets.ar.xz"));
+static ASSETS_AR_ZST: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/assets.ar.zst"));
 
 bitflags! {
     #[derive(Debug, Copy, Clone, Eq, PartialEq)]
@@ -189,7 +188,7 @@ impl Assets {
         let mut stockfish = ByEngineFlavor::<Option<PathBuf>>::default();
         let dir = tempfile::Builder::new().prefix("fishnet-").tempdir()?;
 
-        let mut archive = Archive::new(XzDecoder::new(ASSETS_AR_XZ));
+        let mut archive = Archive::new(zstd::Decoder::new(ASSETS_AR_ZST).expect("valid zst"));
         while let Some(entry) = archive.next_entry() {
             let mut entry = entry?;
             let filename = str::from_utf8(entry.header().identifier()).expect("utf-8 filename");
