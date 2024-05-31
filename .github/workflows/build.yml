@@ -95,11 +95,24 @@ jobs:
       - run: tar xf intel-sde/sde-external-9.0.0-2021-11-07-win.tar.xz && echo SDE_PATH=$(cygpath -u $GITHUB_WORKSPACE)/sde-external-9.0.0-2021-11-07-win/sde.exe | tee $GITHUB_ENV
         if: steps.sde.outcome == 'success'
       - run: cargo build --release --target x86_64-pc-windows-gnu -vv
-      - run: mv target/x86_64-pc-windows-gnu/release/fishnet.exe fishnet-x86_64-pc-windows-gnu.exe
+      - run: mv target/x86_64-pc-windows-gnu/release/fishnet.exe fishnet-x86_64-pc-windows-gnu-unsigned.exe
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fishnet-x86_64-pc-windows-gnu-unsigned
+          path: fishnet-x86_64-pc-windows-gnu-unsigned.exe
+      - uses: signpath/github-action-submit-signing-request@v0.3
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: 5f88bd6d-9f02-4053-af25-77474c4957e8
+          project-slug: 'fishnet'
+          signing-policy-slug: ${{ startsWith(github.ref, 'refs/tags/v') && 'release-signing' || 'test-signing' }}
+          github-artifact-name: fishnet-x86_64-pc-windows-gnu-unsigned
+          wait-for-completion: true
+          output-artifact-directory: signed
       - uses: actions/upload-artifact@v4
         with:
           name: fishnet-x86_64-pc-windows-gnu
-          path: fishnet-x86_64-pc-windows-gnu.exe
+          path: signed
   macos-x86-64:
     runs-on: macos-11
     steps:
