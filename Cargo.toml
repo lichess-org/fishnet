@@ -32,7 +32,7 @@ clap = { version = "4", features = ["derive", "deprecated", "wrap_help"] }
 configparser = "3"
 fastrand = "2"
 reqwest = { version = "0.12", features = ["json", "rustls-tls-manual-roots", "stream", "http2"], default-features = false }
-rustls = "0.22" # will fail at runtime if mismatch with reqwest
+rustls = { version = "0.23", features = ["ring", "tls12", "logging"], default-features = false } # will fail at runtime if mismatch with reqwest
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 serde_with = "3"

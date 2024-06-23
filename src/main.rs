@@ -426,11 +426,16 @@ fn exec(command: &mut process::Command) -> io::Error {
 
 fn configure_client() -> Client {
     // Build TLS backend that supports SSLKEYLOGFILE.
-    let mut tls = rustls::ClientConfig::builder()
-        .with_root_certificates(rustls::RootCertStore {
-            roots: webpki_roots::TLS_SERVER_ROOTS.to_vec(),
-        })
-        .with_no_client_auth();
+    let mut tls = rustls::ClientConfig::builder_with_provider(Arc::new(
+        rustls::crypto::ring::default_provider(),
+    ))
+    .with_safe_default_protocol_versions()
+    .expect("default tls versions supported")
+    .with_root_certificates(rustls::RootCertStore {
+        roots: webpki_roots::TLS_SERVER_ROOTS.to_vec(),
+    })
+    .with_no_client_auth();
+
     tls.alpn_protocols = vec!["h2".into(), "http/1.1".into()];
     tls.key_log = Arc::new(rustls::KeyLogFile::new());
 
