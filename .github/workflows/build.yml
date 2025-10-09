@@ -122,7 +122,7 @@ jobs:
           name: fishnet-x86_64-apple-darwin
           path: fishnet-x86_64-apple-darwin
   macos-aarch64:
-    runs-on: macos-13
+    runs-on: macos-26
     permissions:
       contents: read
     env:
