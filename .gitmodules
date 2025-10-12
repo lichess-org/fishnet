@@ -4,3 +4,6 @@
 [submodule "Fairy-Stockfish"]
 	path = Fairy-Stockfish
 	url = https://github.com/ianfab/Fairy-Stockfish.git
+[submodule "assets"]
+	path = assets
+	url = https://github.com/lichess-org/fishnet-assets

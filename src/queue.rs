@@ -26,7 +26,7 @@ use crate::{
         AcquireQuery, AcquireResponseBody, Acquired, AnalysisPart, ApiStub, BatchId, PositionIndex,
         Work,
     },
-    assets::{EngineFlavor, EvalFlavor},
+    assets::EngineFlavor,
     configure::{BacklogOpt, Endpoint, MaxBackoff, StatsOpt},
     ipc::{Chunk, ChunkFailed, Position, PositionResponse, Pull},
     logger::{Logger, ProgressAt, QueueStatusBar, short_variant_name},
@@ -117,7 +117,7 @@ impl QueueStub {
         let state = self.state.lock().await;
         (
             state.stats_recorder.stats.clone(),
-            state.stats_recorder.nnue_nps.clone(),
+            state.stats_recorder.official_nps.clone(),
         )
     }
 }
@@ -250,20 +250,12 @@ impl QueueState {
                 Ok(completed) => {
                     let mut extra = Vec::new();
                     extra.extend(short_variant_name(completed.variant).map(|n| n.to_owned()));
-                    if completed.flavor.eval_flavor().is_hce() {
-                        extra.push("hce".to_owned());
-                    }
                     extra.push(match completed.nps() {
                         Some(nps) => {
-                            let nnue_nps = if completed.flavor.eval_flavor() == EvalFlavor::Nnue {
-                                Some(nps)
-                            } else {
-                                None
-                            };
                             self.stats_recorder.record_batch(
                                 completed.total_positions(),
                                 completed.total_nodes,
-                                nnue_nps,
+                                completed.flavor.is_official().then_some(nps),
                             );
                             format!("{} knps/core", nps / 1000)
                         }
@@ -286,11 +278,7 @@ impl QueueState {
                     match completed.work {
                         Work::Analysis { id, .. } => {
                             self.logger.info(&log);
-                            queue.api.submit_analysis(
-                                id,
-                                completed.flavor.eval_flavor(),
-                                completed.into_analysis(),
-                            );
+                            queue.api.submit_analysis(id, completed.into_analysis());
                         }
                         Work::Move { id, .. } => {
                             self.logger.debug(&log);
@@ -305,11 +293,9 @@ impl QueueState {
                 Err(pending) => {
                     if !pending.work.matrix_wanted() {
                         // Send partial analysis as progress report.
-                        queue.api.submit_analysis(
-                            pending.work.id(),
-                            pending.flavor.eval_flavor(),
-                            pending.progress_report(),
-                        );
+                        queue
+                            .api
+                            .submit_analysis(pending.work.id(), pending.progress_report());
                     }
 
                     self.pending.insert(pending.work.id(), pending);
@@ -406,11 +392,8 @@ impl QueueActor {
             Err(IncomingError::AllSkipped(completed)) => {
                 self.logger
                     .warn(&format!("Completed empty batch {context}."));
-                self.api.submit_analysis(
-                    completed.work.id(),
-                    completed.flavor.eval_flavor(),
-                    completed.into_analysis(),
-                );
+                self.api
+                    .submit_analysis(completed.work.id(), completed.into_analysis());
             }
             Err(err) if is_move => {
                 self.logger
