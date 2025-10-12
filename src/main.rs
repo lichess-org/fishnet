@@ -202,11 +202,11 @@ async fn run(opt: Opt, client: &Client, logger: &Logger) {
         // Print summary from time to time.
         if now.duration_since(summarized) >= Duration::from_secs(120) {
             summarized = now;
-            let (stats, nnue_nps) = queue.stats().await;
+            let (stats, nps) = queue.stats().await;
             logger.fishnet_info(&format!(
-                "v{}: {} (nnue), {} batches, {} positions, {} total nodes",
+                "v{}: {}, {} batches, {} positions, {} total nodes",
                 env!("CARGO_PKG_VERSION"),
-                nnue_nps,
+                nps,
                 dot_thousands(stats.total_batches),
                 dot_thousands(stats.total_positions),
                 dot_thousands(stats.total_nodes),
@@ -275,33 +275,35 @@ async fn worker(i: usize, assets: Arc<Assets>, tx: mpsc::Sender<Pull>, logger: L
             // Ensure engine process is ready.
             let flavor = chunk.flavor;
             let context = ProgressAt::from(&chunk);
-            let (mut sf, join_handle) = if let Some((sf, join_handle)) =
-                engine.get_mut(flavor).take()
-            {
-                (sf, join_handle)
-            } else {
-                // Backoff before starting engine.
-                let backoff = engine_backoff.next();
-                if backoff >= Duration::from_secs(5) {
-                    logger.info(&format!(
-                        "Waiting {backoff:?} before attempting to start engine"
-                    ));
+            let (mut sf, join_handle) =
+                if let Some((sf, join_handle)) = engine.get_mut(flavor).take() {
+                    (sf, join_handle)
                 } else {
-                    logger.debug(&format!(
-                        "Waiting {backoff:?} before attempting to start engine"
-                    ));
-                }
-                tokio::select! {
-                    _ = tx.closed() => break,
-                    _ = sleep(engine_backoff.next()) => (),
-                }
+                    // Backoff before starting engine.
+                    let backoff = engine_backoff.next();
+                    if backoff >= Duration::from_secs(5) {
+                        logger.info(&format!(
+                            "Waiting {backoff:?} before attempting to start engine"
+                        ));
+                    } else {
+                        logger.debug(&format!(
+                            "Waiting {backoff:?} before attempting to start engine"
+                        ));
+                    }
+                    tokio::select! {
+                        _ = tx.closed() => break,
+                        _ = sleep(engine_backoff.next()) => (),
+                    }
 
-                // Start engine and spawn actor.
-                let (sf, sf_actor) =
-                    stockfish::channel(assets.stockfish.get(flavor).path.clone(), logger.clone());
-                let join_handle = tokio::spawn(sf_actor.run());
-                (sf, join_handle)
-            };
+                    // Start engine and spawn actor.
+                    let (sf, sf_actor) = stockfish::channel(
+                        assets.stockfish.get(flavor).path.clone(),
+                        flavor,
+                        logger.clone(),
+                    );
+                    let join_handle = tokio::spawn(sf_actor.run());
+                    (sf, join_handle)
+                };
 
             // Analyse or play.
             let batch_id = chunk.work.id();

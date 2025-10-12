@@ -8,7 +8,6 @@ use std::{
 
 use ar::Archive;
 use bitflags::bitflags;
-use serde::Serialize;
 use tempfile::TempDir;
 use zstd::stream::read::Decoder as ZstdDecoder;
 
@@ -151,11 +150,8 @@ pub enum EngineFlavor {
 }
 
 impl EngineFlavor {
-    pub fn eval_flavor(self) -> EvalFlavor {
-        match self {
-            EngineFlavor::Official => EvalFlavor::Nnue,
-            EngineFlavor::MultiVariant => EvalFlavor::Hce,
-        }
+    pub fn is_official(self) -> bool {
+        matches!(self, EngineFlavor::Official)
     }
 }
 
@@ -178,24 +174,6 @@ impl<T> ByEngineFlavor<T> {
             EngineFlavor::Official => &mut self.official,
             EngineFlavor::MultiVariant => &mut self.multi_variant,
         }
-    }
-}
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize)]
-pub enum EvalFlavor {
-    #[serde(rename = "classical")]
-    Hce,
-    #[serde(rename = "nnue")]
-    Nnue,
-}
-
-impl EvalFlavor {
-    pub fn is_nnue(self) -> bool {
-        matches!(self, EvalFlavor::Nnue)
-    }
-
-    pub fn is_hce(self) -> bool {
-        matches!(self, EvalFlavor::Hce)
     }
 }
 
