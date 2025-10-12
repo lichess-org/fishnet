@@ -202,11 +202,11 @@ async fn run(opt: Opt, client: &Client, logger: &Logger) {
         // Print summary from time to time.
         if now.duration_since(summarized) >= Duration::from_secs(120) {
             summarized = now;
-            let (stats, nnue_nps) = queue.stats().await;
+            let (stats, nps) = queue.stats().await;
             logger.fishnet_info(&format!(
-                "v{}: {} (nnue), {} batches, {} positions, {} total nodes",
+                "v{}: {}, {} batches, {} positions, {} total nodes",
                 env!("CARGO_PKG_VERSION"),
-                nnue_nps,
+                nps,
                 dot_thousands(stats.total_batches),
                 dot_thousands(stats.total_positions),
                 dot_thousands(stats.total_nodes),
