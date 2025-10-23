@@ -121,6 +121,7 @@ macro_rules! has_aarch64_builder_feature {
 
 #[allow(clippy::nonminimal_bool, clippy::eq_op)]
 fn stockfish_build<W: Write>(archive: &mut ar::Builder<W>) {
+    println!("cargo:rerun-if-env-changed=COMP");
     println!("cargo:rerun-if-env-changed=CXX");
     println!("cargo:rerun-if-env-changed=CXXFLAGS");
     println!("cargo:rerun-if-env-changed=DEPENDFLAGS");
@@ -337,15 +338,15 @@ impl Target {
             println!("cargo:warning=Building {exe} without profile-guided optimization");
         }
 
-        let (comp, default_cxx, sccache_wrapper, default_make) = if windows {
+        let (default_comp, default_cxx, sccache_wrapper, default_make) = if windows {
             ("mingw", "g++", "sccache-g++.bat", "mingw32-make")
-        } else if target_os == "linux" {
-            ("gcc", "g++", "sccache-g++", "make")
         } else if target_os == "freebsd" {
             ("clang", "clang++", "sccache-clang++", "gmake")
         } else {
             ("clang", "clang++", "sccache-clang++", "make")
         };
+
+        let comp = env::var("COMP").unwrap_or_else(|_| default_comp.to_owned());
 
         let make = env::var("MAKE").unwrap_or_else(|_| default_make.to_owned());
 
@@ -393,6 +394,9 @@ impl Target {
             Command::new(&make)
                 .current_dir(src_path)
                 .env("MAKEFLAGS", env::var("CARGO_MAKEFLAGS").unwrap())
+                .arg(format!("COMP={comp}"))
+                .arg(format!("CXX={cxx}"))
+                .arg(format!("ARCH={}", self.arch))
                 .arg("clean")
                 .status()
                 .unwrap()
@@ -446,6 +450,9 @@ impl Target {
             Command::new(&make)
                 .current_dir(src_path)
                 .env("MAKEFLAGS", env::var("CARGO_MAKEFLAGS").unwrap())
+                .arg(format!("COMP={comp}"))
+                .arg(format!("CXX={cxx}"))
+                .arg(format!("ARCH={}", self.arch))
                 .arg(format!("EXE={exe}"))
                 .arg("strip")
                 .status()

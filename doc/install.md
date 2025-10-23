@@ -6,8 +6,8 @@ See [README.md](/README.md).
 
 ## From source
 
-Requires [a recent Rust toolchain](https://rustup.rs/), a C++ compiler, `strip`,
-and `make`.
+Requires [a recent Rust toolchain](https://rustup.rs/), a C++ compiler
+(`clang` recommended), `strip`, and `make`.
 
 `sccache` recommended for repeated builds.
 
@@ -24,6 +24,16 @@ git pull
 git submodule update
 RUSTC_WRAPPER=sccache RUSTFLAGS="-C target-cpu=native" cargo run --release -vv --
 ```
+
+Optional environment variables:
+
+* `COMP`: `clang` (default), `gcc`, `mingw` (default on Windows)
+* `CXX`
+* `CXXFLAGS`
+* `DEPENDFLAGS`
+* `LDFLAGS`
+* `MAKE`
+* `SDE_PATH`
 
 ## Docker
 
