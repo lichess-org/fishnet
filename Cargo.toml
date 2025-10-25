@@ -1,6 +1,6 @@
 [package]
 name = "fishnet"
-version = "2.11.1-dev" # pull, test, remove dev, publish, tag, bump dev, push
+version = "2.11.1-dev" # pull, remove dev, test, tag, bump dev, check, push
 description = "Distributed Stockfish analysis for lichess.org"
 repository = "https://github.com/lichess-org/fishnet"
 readme = "README.md"
@@ -10,16 +10,7 @@ categories = ["command-line-utilities", "games"]
 keywords = ["chess", "lichess"]
 rust-version = "1.85.1"
 edition = "2024"
-exclude = [
-    "Stockfish/**/*.o",
-    "Stockfish/**/*.s",
-    "Stockfish/**/.depend",
-    "Stockfish/**/*.nnue",
-    "Fairy-Stockfish/**/*.o",
-    "Fairy-Stockfish/**/*.s",
-    "Fairy-Stockfish/**/.depend",
-    "Fairy-Stockfish/**/*.nnue",
-]
+publish = false
 
 [profile.release]
 strip = true

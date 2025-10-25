@@ -15,9 +15,6 @@ use zstd::stream::write::Encoder as ZstdEncoder;
 
 static OUT_PATH: LazyLock<PathBuf> = LazyLock::new(|| PathBuf::from(&env::var("OUT_DIR").unwrap()));
 
-const EVAL_FILE_NAME: &str = "nn-1c0000000000.nnue";
-const EVAL_FILE_SMALL_NAME: &str = "nn-37f18f62d772.nnue";
-
 static SF_SOURCE_FILES: LazyLock<Vec<PathBuf>> = LazyLock::new(|| {
     assert!(
         Path::new("Stockfish").join("src").is_dir(),
@@ -34,8 +31,6 @@ static SF_SOURCE_FILES: LazyLock<Vec<PathBuf>> = LazyLock::new(|| {
         "Stockfish/**/*.sh",
         "Stockfish/src/**/*.cpp",
         "Stockfish/src/**/*.h",
-        &format!("Stockfish/src/{}", EVAL_FILE_NAME),
-        &format!("Stockfish/src/{}", EVAL_FILE_SMALL_NAME),
         // Fairy-Stockfish
         "Fairy-Stockfish/src/Makefile",
         "Fairy-Stockfish/src/**/*.cpp",
@@ -65,22 +60,7 @@ fn main() {
         ZstdEncoder::new(File::create(OUT_PATH.join("assets.ar.zst")).unwrap(), 6).unwrap(),
     );
     stockfish_build(&mut archive);
-    append_file(
-        &mut archive,
-        SF_BUILD_PATH
-            .join("Stockfish")
-            .join("src")
-            .join(EVAL_FILE_NAME),
-        0o644,
-    );
-    append_file(
-        &mut archive,
-        SF_BUILD_PATH
-            .join("Stockfish")
-            .join("src")
-            .join(EVAL_FILE_SMALL_NAME),
-        0o644,
-    );
+    add_nnues(&mut archive);
     archive.into_inner().unwrap().finish().unwrap();
 
     add_favicon();
@@ -308,20 +288,8 @@ struct Target {
     sde: Option<String>,
 }
 
-#[derive(Debug, PartialEq, Eq)]
-enum Flavor {
-    Official,
-    MultiVariant,
-}
-
 impl Target {
-    fn build<W: Write>(
-        &self,
-        flavor: Flavor,
-        src_path: &Path,
-        name: &'static str,
-        archive: &mut ar::Builder<W>,
-    ) {
+    fn build<W: Write>(&self, src_path: &Path, name: &'static str, archive: &mut ar::Builder<W>) {
         let release = env::var("PROFILE").unwrap() == "release";
         let windows = env::var("CARGO_CFG_TARGET_FAMILY").unwrap() == "windows";
         let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap();
@@ -418,20 +386,6 @@ impl Target {
             "$(MAKE) clean"
         );
 
-        if flavor == Flavor::Official {
-            assert!(
-                Command::new(&make)
-                    .current_dir(src_path)
-                    .env("MAKEFLAGS", env::var("CARGO_MAKEFLAGS").unwrap())
-                    .arg("-B")
-                    .arg("net")
-                    .status()
-                    .unwrap()
-                    .success(),
-                "$(MAKE) net"
-            );
-        }
-
         assert!(
             Command::new(&make)
                 .current_dir(src_path)
@@ -482,7 +436,6 @@ impl Target {
 
     fn build_official<W: Write>(&self, archive: &mut ar::Builder<W>) {
         self.build(
-            Flavor::Official,
             &SF_BUILD_PATH.join("Stockfish").join("src"),
             "stockfish",
             archive,
@@ -491,7 +444,6 @@ impl Target {
 
     fn build_multi_variant<W: Write>(&self, archive: &mut ar::Builder<W>) {
         self.build(
-            Flavor::MultiVariant,
             &SF_BUILD_PATH.join("Fairy-Stockfish").join("src"),
             "fairy-stockfish",
             archive,
@@ -502,6 +454,34 @@ impl Target {
         self.build_official(archive);
         self.build_multi_variant(archive);
     }
+}
+
+fn add_nnues<W: Write>(archive: &mut ar::Builder<W>) {
+    assert!(
+        Path::new("assets").join("README.md").is_file(),
+        "assets/README.md does not exist. Try: git submodule update --init"
+    );
+
+    for nnue in glob("assets/**/*.nnue").unwrap() {
+        let nnue = nnue.unwrap();
+        println!("cargo:rerun-if-changed={}", nnue.display());
+        append_file(archive, nnue, 0o644);
+    }
+
+    println!(
+        "cargo:rustc-env=FISHNET_FAIRY_STOCKFISH_EVAL_FILES={}",
+        glob("assets/Fairy-Stockfish/*.nnue")
+            .unwrap()
+            .map(|path| path
+                .unwrap()
+                .file_name()
+                .unwrap()
+                .to_str()
+                .unwrap()
+                .to_owned())
+            .collect::<Vec<_>>()
+            .join(if cfg!(windows) { ";" } else { ":" })
+    );
 }
 
 fn append_file<W: Write, P: AsRef<Path>>(archive: &mut ar::Builder<W>, path: P, mode: u32) {
