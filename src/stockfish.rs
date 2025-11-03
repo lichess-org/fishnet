@@ -9,19 +9,24 @@ use tokio::{
 
 use crate::{
     api::{Score, Work},
-    assets::{EngineFlavor, EvalFlavor},
+    assets::EngineFlavor,
     ipc::{Chunk, ChunkFailed, Matrix, Position, PositionResponse},
     logger::Logger,
     util::NevermindExt as _,
 };
 
-pub fn channel(exe: PathBuf, logger: Logger) -> (StockfishStub, StockfishActor) {
+pub fn channel(
+    exe: PathBuf,
+    engine_flavor: EngineFlavor,
+    logger: Logger,
+) -> (StockfishStub, StockfishActor) {
     let (tx, rx) = mpsc::channel(1);
     (
         StockfishStub { tx },
         StockfishActor {
             rx,
             exe,
+            engine_flavor,
             initialized: false,
             logger,
         },
@@ -50,6 +55,7 @@ impl StockfishStub {
 pub struct StockfishActor {
     rx: mpsc::Receiver<StockfishMessage>,
     exe: PathBuf,
+    engine_flavor: EngineFlavor,
     initialized: bool,
     logger: Logger,
 }
@@ -213,6 +219,14 @@ impl StockfishActor {
 
     async fn init(&mut self, stdout: &mut Stdout, stdin: &mut Stdin) -> io::Result<()> {
         if !mem::replace(&mut self.initialized, true) {
+            if self.engine_flavor == EngineFlavor::MultiVariant {
+                stdin
+                    .write_line(&format!(
+                        "setoption name EvalFile value {}",
+                        env!("FISHNET_FAIRY_STOCKFISH_EVAL_FILES"),
+                    ))
+                    .await?;
+            }
             stdin
                 .write_line("setoption name UCI_Chess960 value true")
                 .await?;
@@ -252,12 +266,6 @@ impl StockfishActor {
         if chunk.flavor == EngineFlavor::MultiVariant {
             stdin
                 .write_line(&format!(
-                    "setoption name Use NNUE value {}",
-                    chunk.flavor.eval_flavor().is_nnue()
-                ))
-                .await?;
-            stdin
-                .write_line(&format!(
                     "setoption name UCI_AnalyseMode value {}",
                     matches!(chunk.work, Work::Analysis { .. })
                 ))
@@ -288,10 +296,7 @@ impl StockfishActor {
         // Collect results for all positions of the chunk.
         let mut responses = Vec::with_capacity(chunk.positions.len());
         for position in chunk.positions {
-            responses.push(
-                self.go(stdout, stdin, chunk.flavor.eval_flavor(), position)
-                    .await?,
-            );
+            responses.push(self.go(stdout, stdin, position).await?);
         }
         Ok(responses)
     }
@@ -300,7 +305,6 @@ impl StockfishActor {
         &mut self,
         stdout: &mut Stdout,
         stdin: &mut Stdin,
-        eval_flavor: EvalFlavor,
         position: Position,
     ) -> io::Result<PositionResponse> {
         // Setup position.
@@ -344,11 +348,7 @@ impl StockfishActor {
                 go
             }
             Work::Analysis { nodes, depth, .. } => {
-                let mut go = vec![
-                    "go".to_owned(),
-                    "nodes".to_owned(),
-                    nodes.get(eval_flavor).to_string(),
-                ];
+                let mut go = vec!["go".to_owned(), "nodes".to_owned(), nodes.get().to_string()];
 
                 if let Some(depth) = depth {
                     go.extend_from_slice(&["depth".to_owned(), depth.to_string()]);

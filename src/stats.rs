@@ -19,7 +19,7 @@ fn default_stats_file() -> Option<PathBuf> {
 
 pub struct StatsRecorder {
     pub stats: Stats,
-    pub nnue_nps: NpsRecorder,
+    pub official_nps: NpsRecorder,
     store: Option<(PathBuf, File)>,
     cores: NonZeroUsize,
 }
@@ -60,13 +60,13 @@ impl Stats {
 
 impl StatsRecorder {
     pub fn new(opt: StatsOpt, cores: NonZeroUsize) -> StatsRecorder {
-        let nnue_nps = NpsRecorder::new();
+        let official_nps = NpsRecorder::new();
 
         if opt.no_stats_file {
             return StatsRecorder {
                 stats: Stats::default(),
                 store: None,
-                nnue_nps,
+                official_nps,
                 cores,
             };
         }
@@ -78,7 +78,7 @@ impl StatsRecorder {
             return StatsRecorder {
                 stats: Stats::default(),
                 store: None,
-                nnue_nps,
+                official_nps,
                 cores,
             };
         };
@@ -116,18 +116,18 @@ impl StatsRecorder {
         StatsRecorder {
             stats,
             store,
-            nnue_nps,
+            official_nps,
             cores,
         }
     }
 
-    pub fn record_batch(&mut self, positions: u64, nodes: u64, nnue_nps: Option<u32>) {
+    pub fn record_batch(&mut self, positions: u64, nodes: u64, official_nps: Option<u32>) {
         self.stats.total_batches += 1;
         self.stats.total_positions += positions;
         self.stats.total_nodes += nodes;
 
-        if let Some(nnue_nps) = nnue_nps {
-            self.nnue_nps.record(nnue_nps);
+        if let Some(official_nps) = official_nps {
+            self.official_nps.record(official_nps);
         }
 
         if let Some((ref path, ref mut stats_file)) = self.store {
@@ -142,7 +142,7 @@ impl StatsRecorder {
         // 60 positions at 1_450_000 nodes each.
         let estimated_batch_seconds = u64::from(min(
             7 * 60, // deadline
-            60 * 1_450_000 / self.cores.get() as u32 / max(1, self.nnue_nps.nps),
+            60 * 1_450_000 / self.cores.get() as u32 / max(1, self.official_nps.nps),
         ));
 
         // Top end clients take no longer than 35 seconds. Its worth joining if

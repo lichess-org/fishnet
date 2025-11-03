@@ -16,7 +16,6 @@ use tokio::{
 use url::Url;
 
 use crate::{
-    assets::EvalFlavor,
     configure::{Endpoint, Key, KeyError},
     ipc::Chunk,
     logger::Logger,
@@ -62,7 +61,6 @@ enum ApiMessage {
     },
     SubmitAnalysis {
         batch_id: BatchId,
-        flavor: EvalFlavor,
         analysis: Vec<Option<AnalysisPart>>,
     },
     SubmitMove {
@@ -117,7 +115,14 @@ impl Fishnet {
     }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Copy, Clone, Default, Serialize)]
+enum EvalFlavor {
+    #[default]
+    #[serde(rename = "nnue")]
+    Nnue,
+}
+
+#[derive(Debug, Clone, Default, Serialize)]
 struct Stockfish {
     flavor: EvalFlavor,
 }
@@ -213,22 +218,19 @@ impl fmt::Display for BatchId {
 
 #[derive(Debug, Copy, Clone, Deserialize)]
 pub struct NodeLimit {
-    classical: u32,
+    #[serde(rename = "classical")]
+    _classical: u32,
     sf16: u32,
 }
 
 impl NodeLimit {
-    pub fn get(&self, flavor: EvalFlavor) -> u64 {
+    pub fn get(self) -> u64 {
         // Adjust for nodes spent on overlap of chunks: Worst case is
         // Chunk::MAX_POSITIONS positions split into one chunk of
         // Chunk::MAX_POSITIONS - 1 real positions and one chunk of 1
         // real position and 1 overlap position, such that
         // Chunk::MAX_POSITIONS + 1 positions are analysed.
-        u64::from(match flavor {
-            EvalFlavor::Hce => self.classical,
-            EvalFlavor::Nnue => self.sf16,
-        }) * (Chunk::MAX_POSITIONS as u64)
-            / (Chunk::MAX_POSITIONS as u64 + 1)
+        u64::from(self.sf16) * (Chunk::MAX_POSITIONS as u64) / (Chunk::MAX_POSITIONS as u64 + 1)
     }
 }
 
@@ -446,18 +448,9 @@ impl ApiStub {
         res.await.ok()
     }
 
-    pub fn submit_analysis(
-        &mut self,
-        batch_id: BatchId,
-        flavor: EvalFlavor,
-        analysis: Vec<Option<AnalysisPart>>,
-    ) {
+    pub fn submit_analysis(&mut self, batch_id: BatchId, analysis: Vec<Option<AnalysisPart>>) {
         self.tx
-            .send(ApiMessage::SubmitAnalysis {
-                batch_id,
-                flavor,
-                analysis,
-            })
+            .send(ApiMessage::SubmitAnalysis { batch_id, analysis })
             .expect("api actor alive");
     }
 
@@ -680,11 +673,7 @@ impl ApiActor {
                     }
                 }
             }
-            ApiMessage::SubmitAnalysis {
-                batch_id,
-                flavor,
-                analysis,
-            } => {
+            ApiMessage::SubmitAnalysis { batch_id, analysis } => {
                 let url = format!("{}/analysis/{}", self.endpoint, batch_id);
                 let res = self
                     .client
@@ -696,7 +685,7 @@ impl ApiActor {
                     })
                     .json(&AnalysisRequestBody {
                         fishnet: Fishnet::authenticated(self.key.clone()),
-                        stockfish: Stockfish { flavor },
+                        stockfish: Stockfish::default(),
                         analysis,
                     })
                     .send()
