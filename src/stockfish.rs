@@ -450,7 +450,7 @@ impl FromStr for UciLine {
     type Err = io::Error;
 
     fn from_str(line: &str) -> io::Result<UciLine> {
-        let mut parts = line.split(' ').peekable();
+        let mut parts = line.split(' ');
         Ok(match parts.next() {
             Some("bestmove") => UciLine::Bestmove(parts.next().and_then(|m| m.parse().ok())),
             Some("info") => {
