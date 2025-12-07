@@ -1,4 +1,4 @@
-use std::{io, mem, num::NonZeroU8, path::PathBuf, process::Stdio, time::Duration};
+use std::{io, mem, num::NonZeroU8, path::PathBuf, process::Stdio, str::FromStr, time::Duration};
 
 use shakmaty::uci::UciMove;
 use tokio::{
@@ -363,115 +363,198 @@ impl StockfishActor {
         // Process response.
         let mut scores = Matrix::new();
         let mut pvs = Matrix::new();
-        let mut depth = 0;
-        let mut multipv = NonZeroU8::new(1).unwrap();
-        let mut time = Duration::default();
-        let mut nodes = 0;
-        let mut nps = None;
+        let mut latest_depth = 0;
+        let mut latest_time = Duration::default();
+        let mut latest_nodes = 0;
+        let mut latest_nps = None;
 
         loop {
-            let line = stdout.read_line().await?;
-            let mut parts = line.split(' ');
-            match parts.next() {
-                Some("bestmove") => {
+            let line = stdout.read_line().await?.parse()?;
+            match line {
+                UciLine::Bestmove(best_move) => {
                     if scores.best().is_none() {
                         return Err(io::Error::new(io::ErrorKind::InvalidData, "missing score"));
                     }
-
                     return Ok(PositionResponse {
                         work: position.work,
                         position_index: position.position_index,
                         url: position.url,
-                        best_move: parts.next().and_then(|m| m.parse().ok()),
+                        best_move,
                         scores,
-                        depth,
+                        depth: latest_depth,
                         pvs,
-                        time,
-                        nodes,
-                        nps,
+                        time: latest_time,
+                        nodes: latest_nodes,
+                        nps: latest_nps,
                     });
                 }
-                Some("info") => {
-                    while let Some(part) = parts.next() {
-                        match part {
-                            "multipv" => {
-                                multipv =
-                                    parts.next().and_then(|t| t.parse().ok()).ok_or_else(|| {
-                                        io::Error::new(
-                                            io::ErrorKind::InvalidData,
-                                            "expected multipv",
-                                        )
-                                    })?;
-                            }
-                            "depth" => {
-                                depth =
-                                    parts.next().and_then(|t| t.parse().ok()).ok_or_else(|| {
-                                        io::Error::new(io::ErrorKind::InvalidData, "expected depth")
-                                    })?;
-                            }
-                            "nodes" => {
-                                nodes =
-                                    parts.next().and_then(|t| t.parse().ok()).ok_or_else(|| {
-                                        io::Error::new(io::ErrorKind::InvalidData, "expected nodes")
-                                    })?;
-                            }
-                            "time" => {
-                                time = parts
+                UciLine::Info {
+                    multipv,
+                    depth,
+                    nodes,
+                    time,
+                    nps,
+                    score,
+                    lowerbound,
+                    upperbound,
+                    pv,
+                } => {
+                    if let Some(depth) = depth
+                        && multipv.get() == 1
+                        && !lowerbound
+                        && !upperbound
+                    {
+                        latest_depth = depth;
+                    }
+                    if let Some(nodes) = nodes {
+                        latest_nodes = nodes;
+                    }
+                    if let Some(time) = time {
+                        latest_time = time;
+                    }
+                    latest_nps = nps.or(latest_nps);
+                    if let Some(score) = score
+                        && let Some(depth) = depth
+                        && ((!lowerbound && !upperbound) || multipv.get() > 1)
+                    {
+                        scores.set(multipv, depth, score);
+                    }
+                    if let Some(pv) = pv
+                        && let Some(depth) = depth
+                        && ((!lowerbound && !upperbound) || multipv.get() > 1)
+                    {
+                        pvs.set(multipv, depth, pv);
+                    }
+                }
+            }
+        }
+    }
+}
+
+enum UciLine {
+    Bestmove(Option<UciMove>),
+    Info {
+        multipv: NonZeroU8,
+        depth: Option<u8>,
+        nodes: Option<u64>,
+        time: Option<Duration>,
+        nps: Option<u32>,
+        score: Option<Score>,
+        lowerbound: bool,
+        upperbound: bool,
+        pv: Option<Vec<UciMove>>,
+    },
+}
+
+impl FromStr for UciLine {
+    type Err = io::Error;
+
+    fn from_str(line: &str) -> io::Result<UciLine> {
+        let mut parts = line.split(' ');
+        Ok(match parts.next() {
+            Some("bestmove") => UciLine::Bestmove(parts.next().and_then(|m| m.parse().ok())),
+            Some("info") => {
+                let mut multipv = NonZeroU8::MIN;
+                let mut depth = None;
+                let mut nodes = None;
+                let mut time = None;
+                let mut nps = None;
+                let mut score = None;
+                let mut lowerbound = false;
+                let mut upperbound = false;
+                let mut pv = None;
+                while let Some(part) = parts.next() {
+                    match part {
+                        "multipv" => {
+                            multipv =
+                                parts.next().and_then(|t| t.parse().ok()).ok_or_else(|| {
+                                    io::Error::new(io::ErrorKind::InvalidData, "expected multipv")
+                                })?;
+                        }
+                        "depth" => {
+                            depth = Some(parts.next().and_then(|t| t.parse().ok()).ok_or_else(
+                                || io::Error::new(io::ErrorKind::InvalidData, "expected depth"),
+                            )?);
+                        }
+                        "nodes" => {
+                            nodes = Some(parts.next().and_then(|t| t.parse().ok()).ok_or_else(
+                                || io::Error::new(io::ErrorKind::InvalidData, "expected nodes"),
+                            )?);
+                        }
+                        "time" => {
+                            time = Some(
+                                parts
                                     .next()
                                     .and_then(|t| t.parse().ok())
                                     .map(Duration::from_millis)
                                     .ok_or_else(|| {
                                         io::Error::new(io::ErrorKind::InvalidData, "expected time")
-                                    })?;
-                            }
-                            "nps" => {
-                                nps = parts.next().and_then(|n| n.parse().ok());
-                            }
-                            "score" => {
-                                scores.set(
-                                    multipv,
-                                    depth,
-                                    match parts.next() {
-                                        Some("cp") => parts
-                                            .next()
-                                            .and_then(|cp| cp.parse().ok())
-                                            .map(Score::Cp),
-                                        Some("mate") => parts
-                                            .next()
-                                            .and_then(|mate| mate.parse().ok())
-                                            .map(Score::Mate),
-                                        _ => {
-                                            return Err(io::Error::new(
-                                                io::ErrorKind::InvalidData,
-                                                "expected cp or mate",
-                                            ));
-                                        }
-                                    }
-                                    .ok_or_else(|| {
-                                        io::Error::new(io::ErrorKind::InvalidData, "expected score")
                                     })?,
-                                );
-                            }
-                            "pv" => {
-                                pvs.set(
-                                    multipv,
-                                    depth,
-                                    (&mut parts)
-                                        .map(|part| part.parse::<UciMove>())
-                                        .collect::<Result<Vec<_>, _>>()
-                                        .map_err(|_| {
-                                            io::Error::new(io::ErrorKind::InvalidData, "invalid pv")
-                                        })?,
-                                );
-                            }
-                            _ => (),
+                            );
                         }
+                        "nps" => {
+                            nps = parts.next().and_then(|n| n.parse().ok());
+                        }
+                        "score" => {
+                            score = Some(
+                                match parts.next() {
+                                    Some("cp") => {
+                                        parts.next().and_then(|cp| cp.parse().ok()).map(Score::Cp)
+                                    }
+                                    Some("mate") => parts
+                                        .next()
+                                        .and_then(|mate| mate.parse().ok())
+                                        .map(Score::Mate),
+                                    _ => {
+                                        return Err(io::Error::new(
+                                            io::ErrorKind::InvalidData,
+                                            "expected cp or mate",
+                                        ));
+                                    }
+                                }
+                                .ok_or_else(|| {
+                                    io::Error::new(io::ErrorKind::InvalidData, "expected score")
+                                })?,
+                            );
+                        }
+                        "lowerbound" => {
+                            lowerbound = true;
+                        }
+                        "upperbound" => {
+                            upperbound = true;
+                        }
+                        "pv" => {
+                            pv = Some(
+                                (&mut parts)
+                                    .map(|part| part.parse::<UciMove>())
+                                    .collect::<Result<Vec<_>, _>>()
+                                    .map_err(|_| {
+                                        io::Error::new(io::ErrorKind::InvalidData, "invalid pv")
+                                    })?,
+                            );
+                        }
+                        "string" => break,
+                        _ => (),
                     }
                 }
-                _ => self
-                    .logger
-                    .warn(&format!("Unexpected engine output: {line}")),
+                UciLine::Info {
+                    multipv,
+                    depth,
+                    nodes,
+                    time,
+                    nps,
+                    score,
+                    lowerbound,
+                    upperbound,
+                    pv,
+                }
             }
-        }
+            _ => {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!("unexpected engine output: {line}"),
+                ));
+            }
+        })
     }
 }
