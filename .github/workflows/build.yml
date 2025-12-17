@@ -159,7 +159,7 @@ jobs:
           path: fishnet-x86_64-apple-darwin
       - run: sccache --stop-server
   macos-aarch64:
-    runs-on: macos-14-arm64
+    runs-on: macos-14
     permissions:
       contents: read
     env:
