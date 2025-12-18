@@ -9,7 +9,7 @@ jobs:
       contents: read
       id-token: write
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with:
           submodules: true
       - uses: docker/setup-qemu-action@v3
@@ -19,7 +19,7 @@ jobs:
         id: setup-buildx
         with:
           platforms: linux/amd64,linux/arm64
-      - uses: actions/cache@v4
+      - uses: actions/cache@v5
         id: cache
         with:
           path: ${{ runner.temp }}/cache-mount
@@ -74,11 +74,11 @@ jobs:
         if: github.event_name == 'push'
       - run: docker cp "$(docker create ${{ steps.docker_build_amd64.outputs.imageid }}):/fishnet" fishnet-x86_64-unknown-linux-musl
       - run: docker cp "$(docker create ${{ steps.docker_build_arm64.outputs.imageid }}):/fishnet" fishnet-aarch64-unknown-linux-musl
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: fishnet-x86_64-unknown-linux-musl
           path: fishnet-x86_64-unknown-linux-musl
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: fishnet-aarch64-unknown-linux-musl
           path: fishnet-aarch64-unknown-linux-musl
@@ -99,10 +99,10 @@ jobs:
           msystem: mingw64
           update: true
           install: mingw-w64-x86_64-sccache mingw-w64-x86_64-gcc mingw-w64-x86_64-rust mingw-w64-x86_64-make tar
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with:
           submodules: true
-      - uses: actions/cache@v4
+      - uses: actions/cache@v5
         with:
           path: ${{ runner.temp }}/sccache
           key: sccache-windows-x86-64-${{ github.run_id }}
@@ -110,7 +110,7 @@ jobs:
             sccache-windows-x86-64
       - run: SCCACHE_CACHE_SIZE=250M SCCACHE_DIR=${{ runner.temp }}/sccache sccache --start-server
       - run: sccache --show-stats
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with:
           repository: lichess-org/intel-sde
           ssh-key: ${{ secrets.ID_RSA_INTEL_SDE }}
@@ -122,27 +122,27 @@ jobs:
         if: steps.sde.outcome == 'success'
       - run: cargo build --release --target x86_64-pc-windows-gnu -vv
       - run: mv target/x86_64-pc-windows-gnu/release/fishnet.exe fishnet-x86_64-pc-windows-gnu-unsigned.exe
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         id: upload-unsigned-artifact
         with:
           name: fishnet-x86_64-pc-windows-gnu-unsigned
           path: fishnet-x86_64-pc-windows-gnu-unsigned.exe
       - run: sccache --stop-server
   macos-x86-64:
-    runs-on: macos-13
+    runs-on: macos-14
     permissions:
       contents: read
     env:
       RUSTC_WRAPPER: sccache
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with:
           submodules: true
       - uses: dtolnay/rust-toolchain@stable
       - uses: taiki-e/install-action@v2
         with:
           tool: sccache
-      - uses: actions/cache@v4
+      - uses: actions/cache@v5
         with:
           path: ${{ runner.temp }}/sccache
           key: macos-x86-64-sccache-${{ github.run_id }}
@@ -153,20 +153,20 @@ jobs:
       - run: cargo install --force cargo-auditable
       - run: cargo auditable build --release -vv
       - run: mv target/release/fishnet fishnet-x86_64-apple-darwin
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: fishnet-x86_64-apple-darwin
           path: fishnet-x86_64-apple-darwin
       - run: sccache --stop-server
   macos-aarch64:
-    runs-on: macos-13
+    runs-on: macos-14
     permissions:
       contents: read
     env:
       CXXFLAGS: -target arm64-apple-macos11
       RUSTC_WRAPPER: sccache
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with:
           submodules: true
       - uses: dtolnay/rust-toolchain@stable
@@ -175,7 +175,7 @@ jobs:
       - uses: taiki-e/install-action@v2
         with:
           tool: sccache
-      - uses: actions/cache@v4
+      - uses: actions/cache@v5
         with:
           path: ${{ runner.temp }}/sccache
           key: macos-aarch64-sccache-${{ github.run_id }}
@@ -186,7 +186,7 @@ jobs:
       - run: cargo install --force cargo-auditable
       - run: cargo auditable build --release --target aarch64-apple-darwin -vv
       - run: mv target/aarch64-apple-darwin/release/fishnet fishnet-aarch64-apple-darwin
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: fishnet-aarch64-apple-darwin
           path: fishnet-aarch64-apple-darwin
@@ -212,7 +212,7 @@ jobs:
           wait-for-completion-timeout-in-seconds: 7200
           output-artifact-directory: signed
       - run: mv signed/fishnet-x86_64-pc-windows-gnu-unsigned.exe signed/fishnet-x86_64-pc-windows-gnu.exe
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: fishnet-x86_64-pc-windows-gnu
           path: signed
@@ -229,7 +229,7 @@ jobs:
     steps:
       - run: echo ::set-output name=VERSION::${GITHUB_REF/refs\/tags\//}
         id: get_version
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           merge-multiple: true
       - run: sha256sum fishnet-*
@@ -258,7 +258,7 @@ jobs:
     steps:
       - run: echo ::set-output name=VERSION::${GITHUB_REF/refs\/tags\//}
         id: get_version
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           merge-multiple: true
       - run: sha256sum fishnet-*
