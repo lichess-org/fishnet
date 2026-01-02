@@ -27,7 +27,7 @@ RUSTC_WRAPPER=sccache RUSTFLAGS="-C target-cpu=native" cargo run --release -vv -
 
 Optional environment variables to configure Stockfish builds:
 
-* `COMP`: `clang` (default), `gcc`, `mingw` (default on Windows)
+* `COMP`: `clang`, `gcc` (default on Linux), `mingw` (default on Windows)
 * `CXX`
 * `CXXFLAGS`
 * `DEPENDFLAGS`
