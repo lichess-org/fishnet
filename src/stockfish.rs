@@ -11,7 +11,7 @@ use crate::{
     api::{Score, Work},
     assets::{EngineFlavor, EvalFlavor},
     ipc::{Chunk, ChunkFailed, Matrix, Position, PositionResponse},
-    logger::Logger,
+    logger::{Logger, ProgressAt},
     util::NevermindExt as _,
 };
 
@@ -417,6 +417,18 @@ impl StockfishActor {
                         && let Some(depth) = depth
                         && ((!lowerbound && !upperbound) || multipv.get() > 1)
                     {
+                        if !score.is_plausible() {
+                            self.logger.warn(&format!(
+                                "Implausible score {:?} at depth {}, context: {}",
+                                score,
+                                depth,
+                                ProgressAt {
+                                    batch_id: position.work.id(),
+                                    batch_url: position.url.clone(),
+                                    position_index: position.position_index,
+                                }
+                            ));
+                        }
                         scores.set(multipv, depth, score);
                     }
                     if let Some(pv) = pv

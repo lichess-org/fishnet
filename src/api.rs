@@ -396,6 +396,15 @@ pub enum Score {
     Mate(i64),
 }
 
+impl Score {
+    pub fn is_plausible(self) -> bool {
+        match self {
+            Score::Cp(_) => true,
+            Score::Mate(mate) => mate.abs() <= 246, // Stockfish MAX_PLY
+        }
+    }
+}
+
 #[derive(Debug, Serialize)]
 struct SubmitQuery {
     slow: bool,
