@@ -405,7 +405,7 @@ impl QueueActor {
             }
             Err(IncomingError::AllSkipped(completed)) => {
                 self.logger
-                    .warn(&format!("Completed empty batch {context}."));
+                    .debug(&format!("Completed empty batch {context}."));
                 self.api.submit_analysis(
                     completed.work.id(),
                     completed.flavor.eval_flavor(),
