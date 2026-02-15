@@ -641,13 +641,23 @@ impl IncomingBatch {
 
                     // Prepare dummy positions, so the respective previous
                     // position is available when creating chunks.
-                    let prev_and_current: Vec<_> = zip(
-                        once(None).chain(positions.clone().into_iter().map(|pos| {
-                            Some(Position {
+                    let prev_and_current: Vec<(Option<Position>, Position)> = zip(
+                        once(positions.first().cloned().map(|pos| {
+                            // Repeat the last position, to offset that it
+                            // is analyzed with completely fresh hash.
+                            Position {
                                 position_index: None,
                                 ..pos
-                            })
-                        })),
+                            }
+                        }))
+                        .chain(positions.clone().into_iter().map(
+                            |pos| {
+                                Some(Position {
+                                    position_index: None,
+                                    ..pos
+                                })
+                            },
+                        )),
                         positions,
                     )
                     .collect();
