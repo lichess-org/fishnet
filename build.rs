@@ -445,9 +445,9 @@ impl Target {
                     ),
                 )
                 .env_remove("SDE_PATH")
-                .env_remove("WINE_PATH")
-                .args(sde.map(|e| format!("WINE_PATH={e} --")))
+                .env_remove("RUN_PREFIX")
                 .args(sde.map(|e| format!("SDE_PATH={e}")))
+                .args(sde.map(|e| format!("RUN_PREFIX={e} --")))
                 .arg("-B")
                 .arg(format!("COMP={comp}"))
                 .arg(format!("CXX={cxx}"))
