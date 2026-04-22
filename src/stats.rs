@@ -130,10 +130,10 @@ impl StatsRecorder {
             self.nnue_nps.record(nnue_nps);
         }
 
-        if let Some((ref path, ref mut stats_file)) = self.store {
-            if let Err(err) = self.stats.save_to(stats_file) {
-                eprintln!("E: Failed to write stats to {path:?}: {err}");
-            }
+        if let Some((ref path, ref mut stats_file)) = self.store
+            && let Err(err) = self.stats.save_to(stats_file)
+        {
+            eprintln!("E: Failed to write stats to {path:?}: {err}");
         }
     }
 

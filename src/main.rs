@@ -108,18 +108,16 @@ async fn run(opt: Opt, client: &Client, logger: &Logger) {
     logger.info(&format!("Cores: {cores}"));
 
     // Install handler for SIGTERM.
-    #[cfg(unix)]
-    let mut sig_term = signal::unix::signal(signal::unix::SignalKind::terminate())
-        .expect("install handler for sigterm");
-    #[cfg(windows)]
-    let mut sig_term = signal::windows::ctrl_break().expect("install handler for ctrl+break");
+    let mut sig_term = cfg_select! {
+        unix => signal::unix::signal(signal::unix::SignalKind::terminate()).expect("install handler for sigterm"),
+        windows => signal::windows::ctrl_break().expect("install handler for ctrl+break"),
+    };
 
     // Install handler for SIGINT.
-    #[cfg(unix)]
-    let mut sig_int = signal::unix::signal(signal::unix::SignalKind::interrupt())
-        .expect("install handler for sigint");
-    #[cfg(windows)]
-    let mut sig_int = signal::windows::ctrl_c().expect("install handler for ctrl+c");
+    let mut sig_int = cfg_select! {
+        unix => signal::unix::signal(signal::unix::SignalKind::interrupt()).expect("install handler for sigint"),
+        windows => signal::windows::ctrl_c().expect("install handler for ctrl+c"),
+    };
 
     // To wait for workers and API actor before shutdown.
     let mut join_set = JoinSet::new();
@@ -404,57 +402,59 @@ fn restart_process(current_exe: PathBuf, logger: &Logger) {
     panic!("Failed to restart: {err}");
 }
 
-#[cfg(unix)]
 fn exec(command: &mut process::Command) -> io::Error {
-    use std::os::unix::process::CommandExt as _;
-    // Completely replace the current process image. If successful, execution
-    // of the current process stops here.
-    command.exec()
-}
-
-#[cfg(windows)]
-fn exec(command: &mut process::Command) -> io::Error {
-    use std::os::windows::process::CommandExt as _;
-    // No equivalent for Unix exec() exists. So create a new independent
-    // console instead and terminate the current one:
-    // https://docs.microsoft.com/en-us/windows/win32/procthread/process-creation-flags
-    let create_new_console = 0x0000_0010;
-    match command.creation_flags(create_new_console).spawn() {
-        Ok(_) => process::exit(0),
-        Err(err) => return err,
+    cfg_select! {
+        unix => {
+            use std::os::unix::process::CommandExt as _;
+            // Completely replace the current process image. If successful, execution
+            // of the current process stops here.
+            command.exec()
+        }
+        windows => {
+            use std::os::windows::process::CommandExt as _;
+            // No equivalent for Unix exec() exists. So create a new independent
+            // console instead and terminate the current one:
+            // https://docs.microsoft.com/en-us/windows/win32/procthread/process-creation-flags
+            let create_new_console = 0x0000_0010;
+            match command.creation_flags(create_new_console).spawn() {
+                Ok(_) => process::exit(0),
+                Err(err) => return err,
+            }
+        }
     }
 }
 
-#[cfg(unix)]
-#[allow(unsafe_code)]
+#[expect(unsafe_code)]
 fn set_current_process_min_priority() -> io::Result<()> {
-    use libc::{PRIO_PROCESS, setpriority};
+    cfg_select! {
+        unix => {
+            use libc::{PRIO_PROCESS, setpriority};
 
-    // On Linux the priority range is -20 (highest) to 19 (lowest). On other
-    // Unixes the range is -20 to 20.
-    #[cfg(target_os = "linux")]
-    const MINIMUM_PRIORITY_NICENESS: libc::c_int = 19;
-    #[cfg(not(target_os = "linux"))]
-    const MINIMUM_PRIORITY_NICENESS: libc::c_int = 20;
+            // On Linux the priority range is -20 (highest) to 19 (lowest). On other
+            // Unixes the range is -20 to 20.
+            const MINIMUM_PRIORITY_NICENESS: libc::c_int = cfg_select! {
+                target_os = "linux" => 19,
+                _ => 20,
+            };
 
-    if unsafe { setpriority(PRIO_PROCESS, 0, MINIMUM_PRIORITY_NICENESS) != 0 } {
-        return Err(io::Error::last_os_error());
+            if unsafe { setpriority(PRIO_PROCESS, 0, MINIMUM_PRIORITY_NICENESS) } != 0 {
+                return Err(io::Error::last_os_error());
+            }
+
+            Ok(())
+        }
+        windows => {
+            use windows::Win32::System::Threading::{
+                BELOW_NORMAL_PRIORITY_CLASS, GetCurrentProcess, SetPriorityClass,
+            };
+
+            // BELOW_NORMAL_PRIORITY_CLASS is the lowest priority that won't completely
+            // starve tasks of CPU time on high loads. The lowest IDLE_PRIORITY_CLASS
+            // is stricter than Linux's nice 19!
+            unsafe { SetPriorityClass(GetCurrentProcess(), BELOW_NORMAL_PRIORITY_CLASS) }
+                .map_err(io::Error::other)
+        }
     }
-
-    Ok(())
-}
-
-#[cfg(windows)]
-#[allow(unsafe_code)]
-fn set_current_process_min_priority() -> windows::core::Result<()> {
-    use windows::Win32::System::Threading::{
-        BELOW_NORMAL_PRIORITY_CLASS, GetCurrentProcess, SetPriorityClass,
-    };
-
-    // BELOW_NORMAL_PRIORITY_CLASS is the lowest priority that won't completely
-    // starve tasks of CPU time on high loads. The lowest IDLE_PRIORITY_CLASS
-    // is stricter than Linux's nice 19!
-    unsafe { SetPriorityClass(GetCurrentProcess(), BELOW_NORMAL_PRIORITY_CLASS) }
 }
 
 fn configure_client() -> Client {

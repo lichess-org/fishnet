@@ -401,16 +401,14 @@ pub async fn parse_and_configure(client: &Client) -> Opt {
     }
 
     // Handle key file.
-    if !is_systemd {
-        if let Some(key_file) = opt.key_file.take() {
-            opt.key = Some(
-                fs::read_to_string(key_file)
-                    .expect("read key file")
-                    .trim()
-                    .parse()
-                    .expect("valid key from key file"),
-            );
-        }
+    if !is_systemd && let Some(key_file) = opt.key_file.take() {
+        opt.key = Some(
+            fs::read_to_string(key_file)
+                .expect("read key file")
+                .trim()
+                .parse()
+                .expect("valid key from key file"),
+        );
     }
 
     // Handle config file.

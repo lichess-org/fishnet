@@ -95,26 +95,18 @@ fn has_target_feature(feature: &str) -> bool {
 
 macro_rules! has_x86_64_builder_feature {
     ($feature:tt) => {{
-        #[cfg(target_arch = "x86_64")]
-        {
-            std::arch::is_x86_feature_detected!($feature)
-        }
-        #[cfg(not(target_arch = "x86_64"))]
-        {
-            false
+        cfg_select! {
+            target_arch = "x86_64" => std::arch::is_x86_feature_detected!($feature),
+            _ => false,
         }
     }};
 }
 
 macro_rules! has_aarch64_builder_feature {
     ($feature:tt) => {{
-        #[cfg(target_arch = "aarch64")]
-        {
-            std::arch::is_aarch64_feature_detected!($feature)
-        }
-        #[cfg(not(target_arch = "aarch64"))]
-        {
-            false
+        cfg_select! {
+            target_arch = "aarch64" => std::arch::is_aarch64_feature_detected!($feature),
+            _ => false,
         }
     }};
 }
@@ -522,17 +514,19 @@ fn append_file<W: Write, P: AsRef<Path>>(archive: &mut ar::Builder<W>, path: P, 
 }
 
 fn add_favicon() {
-    #[cfg(target_family = "windows")]
-    {
-        println!("cargo:rerun-if-changed=favicon.ico");
-        winres::WindowsResource::new()
-            .set_icon("favicon.ico")
-            .compile()
-            .unwrap_or_else(|err| {
-                // Resource compilation may fail when toolchain does not match
-                // target, e.g. windows-msvc toolchain with windows-gnu target.
-                // Treat as non-fatal.
-                println!("cargo:warning=Resource compiler not invoked: {}", err);
-            });
+    cfg_select! {
+        target_family = "windows" => {
+            println!("cargo:rerun-if-changed=favicon.ico");
+            winres::WindowsResource::new()
+                .set_icon("favicon.ico")
+                .compile()
+                .unwrap_or_else(|err| {
+                    // Resource compilation may fail when toolchain does not match
+                    // target, e.g. windows-msvc toolchain with windows-gnu target.
+                    // Treat as non-fatal.
+                    println!("cargo:warning=Resource compiler not invoked: {}", err);
+                });
+        }
+        _ => {}
     }
 }

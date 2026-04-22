@@ -116,20 +116,18 @@ impl From<io::Error> for EngineError {
 }
 
 fn new_process_group(command: &mut Command) -> &mut Command {
-    #[cfg(unix)]
-    {
-        // Stop SIGINT from propagating to child process.
-        command.process_group(0);
+    cfg_select! {
+        unix => {
+            // Stop SIGINT from propagating to child process.
+            command.process_group(0);
+        }
+        windows => {
+            // Stop CTRL+C from propagating to child process:
+            // https://docs.microsoft.com/en-us/windows/win32/procthread/process-creation-flags
+            let create_new_process_group = 0x0000_0200;
+            command.creation_flags(create_new_process_group);
+        }
     }
-
-    #[cfg(windows)]
-    {
-        // Stop CTRL+C from propagating to child process:
-        // https://docs.microsoft.com/en-us/windows/win32/procthread/process-creation-flags
-        let create_new_process_group = 0x0000_0200;
-        command.creation_flags(create_new_process_group);
-    }
-
     command
 }
 
