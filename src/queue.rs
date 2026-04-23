@@ -80,11 +80,11 @@ impl QueueStub {
         let mut state = self.state.lock().await;
         let (responses, callback) = pull.split();
         state.handle_position_responses(self, responses);
-        if let Err(callback) = state.try_pull(callback) {
-            if let Some(ref mut tx) = self.tx {
-                tx.send(QueueMessage::Pull { callback })
-                    .nevermind("queue dropped");
-            }
+        if let Err(callback) = state.try_pull(callback)
+            && let Some(ref mut tx) = self.tx
+        {
+            tx.send(QueueMessage::Pull { callback })
+                .nevermind("queue dropped");
         }
     }
 
@@ -670,10 +670,10 @@ impl IncomingBatch {
                         let mut chunk_positions = Vec::with_capacity(Chunk::MAX_POSITIONS);
                         for (prev, current) in prev_and_current_chunked {
                             if !current.skip {
-                                if let Some(prev) = prev {
-                                    if prev.skip || chunk_positions.is_empty() {
-                                        chunk_positions.push(prev.clone());
-                                    }
+                                if let Some(prev) = prev
+                                    && (prev.skip || chunk_positions.is_empty())
+                                {
+                                    chunk_positions.push(prev.clone());
                                 }
                                 chunk_positions.push(current.clone());
                             }

@@ -52,73 +52,70 @@ impl fmt::Display for Cpu {
 }
 
 impl Cpu {
-    #[cfg(target_arch = "x86_64")]
     pub fn detect() -> Cpu {
-        let mut cpu = Cpu::empty();
-        cpu.set(Cpu::SSE2, is_x86_feature_detected!("sse2"));
-        cpu.set(Cpu::POPCNT, is_x86_feature_detected!("popcnt"));
-        cpu.set(Cpu::SSE41, is_x86_feature_detected!("sse4.1"));
-        cpu.set(Cpu::AVX2, is_x86_feature_detected!("avx2"));
-        cpu.set(
-            Cpu::FAST_BMI2,
-            is_x86_feature_detected!("bmi2") && {
-                // AMD was using slow software emulation for PEXT for a
-                // long time. The Zen 3 family (0x19) is the first to
-                // implement it in hardware.
-                let cpuid = raw_cpuid::CpuId::new();
-                cpuid
-                    .get_vendor_info()
-                    .is_none_or(|v| v.as_str() != "AuthenticAMD")
-                    || cpuid
-                        .get_feature_info()
-                        .is_some_and(|f| f.family_id() >= 0x19)
-            },
-        );
-        cpu.set(
-            Cpu::AVX512,
-            is_x86_feature_detected!("avx512f") && is_x86_feature_detected!("avx512bw"),
-        );
-        cpu.set(
-            Cpu::VNNI512,
-            is_x86_feature_detected!("avx512vnni")
-                && is_x86_feature_detected!("avx512dq")
-                && is_x86_feature_detected!("avx512f")
-                && is_x86_feature_detected!("avx512bw")
-                && is_x86_feature_detected!("avx512vl"),
-        );
-        cpu.set(
-            Cpu::AVX512ICL,
-            is_x86_feature_detected!("avx512f")
-                && is_x86_feature_detected!("avx512cd")
-                && is_x86_feature_detected!("avx512vl")
-                && is_x86_feature_detected!("avx512dq")
-                && is_x86_feature_detected!("avx512bw")
-                && is_x86_feature_detected!("avx512ifma")
-                && is_x86_feature_detected!("avx512vbmi")
-                && is_x86_feature_detected!("avx512vbmi2")
-                && is_x86_feature_detected!("avx512vpopcntdq")
-                && is_x86_feature_detected!("avx512bitalg")
-                && is_x86_feature_detected!("avx512vnni")
-                && is_x86_feature_detected!("vpclmulqdq")
-                && is_x86_feature_detected!("gfni")
-                && is_x86_feature_detected!("vaes"),
-        );
-        cpu
-    }
-
-    #[cfg(target_arch = "aarch64")]
-    pub fn detect() -> Cpu {
-        let mut cpu = Cpu::empty();
-        cpu.set(
-            Cpu::DOTPROD,
-            std::arch::is_aarch64_feature_detected!("dotprod"),
-        );
-        cpu
-    }
-
-    #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
-    pub fn detect() -> Cpu {
-        Cpu::empty()
+        cfg_select! {
+            target_arch = "x86_64" => {
+                let mut cpu = Cpu::empty();
+                cpu.set(Cpu::SSE2, is_x86_feature_detected!("sse2"));
+                cpu.set(Cpu::POPCNT, is_x86_feature_detected!("popcnt"));
+                cpu.set(Cpu::SSE41, is_x86_feature_detected!("sse4.1"));
+                cpu.set(Cpu::AVX2, is_x86_feature_detected!("avx2"));
+                cpu.set(
+                    Cpu::FAST_BMI2,
+                    is_x86_feature_detected!("bmi2") && {
+                        // AMD was using slow software emulation for PEXT for a
+                        // long time. The Zen 3 family (0x19) is the first to
+                        // implement it in hardware.
+                        let cpuid = raw_cpuid::CpuId::new();
+                        cpuid
+                            .get_vendor_info()
+                            .is_none_or(|v| v.as_str() != "AuthenticAMD")
+                            || cpuid
+                                .get_feature_info()
+                                .is_some_and(|f| f.family_id() >= 0x19)
+                    },
+                );
+                cpu.set(
+                    Cpu::AVX512,
+                    is_x86_feature_detected!("avx512f") && is_x86_feature_detected!("avx512bw"),
+                );
+                cpu.set(
+                    Cpu::VNNI512,
+                    is_x86_feature_detected!("avx512vnni")
+                        && is_x86_feature_detected!("avx512dq")
+                        && is_x86_feature_detected!("avx512f")
+                        && is_x86_feature_detected!("avx512bw")
+                        && is_x86_feature_detected!("avx512vl"),
+                );
+                cpu.set(
+                    Cpu::AVX512ICL,
+                    is_x86_feature_detected!("avx512f")
+                        && is_x86_feature_detected!("avx512cd")
+                        && is_x86_feature_detected!("avx512vl")
+                        && is_x86_feature_detected!("avx512dq")
+                        && is_x86_feature_detected!("avx512bw")
+                        && is_x86_feature_detected!("avx512ifma")
+                        && is_x86_feature_detected!("avx512vbmi")
+                        && is_x86_feature_detected!("avx512vbmi2")
+                        && is_x86_feature_detected!("avx512vpopcntdq")
+                        && is_x86_feature_detected!("avx512bitalg")
+                        && is_x86_feature_detected!("avx512vnni")
+                        && is_x86_feature_detected!("vpclmulqdq")
+                        && is_x86_feature_detected!("gfni")
+                        && is_x86_feature_detected!("vaes"),
+                );
+                cpu
+            }
+            target_arch = "aarch64" => {
+                let mut cpu = Cpu::empty();
+                cpu.set(
+                    Cpu::DOTPROD,
+                    std::arch::is_aarch64_feature_detected!("dotprod"),
+                );
+                cpu
+            }
+            _ => Cpu::empty(),
+        }
     }
 
     pub fn requirements(filename: &str) -> Cpu {
@@ -257,19 +254,22 @@ impl Assets {
     }
 }
 
-#[cfg(unix)]
 fn create_file(path: &Path, mode: u32) -> io::Result<File> {
-    use std::os::unix::fs::OpenOptionsExt as _;
-    File::options()
-        .create_new(true)
-        .write(true)
-        .mode(mode)
-        .open(path)
-}
+    cfg_select! {
+        unix => {
+            use std::os::unix::fs::OpenOptionsExt as _;
 
-#[cfg(not(unix))]
-fn create_file(path: &Path, _mode: u32) -> io::Result<File> {
-    File::options().create_new(true).write(true).open(path)
+            File::options()
+                .create_new(true)
+                .write(true)
+                .mode(mode)
+                .open(path)
+        }
+        _ => {
+            let _mode = mode;
+            File::options().create_new(true).write(true).open(path)
+        }
+    }
 }
 
 #[cfg(test)]
