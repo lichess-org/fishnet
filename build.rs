@@ -15,8 +15,7 @@ use zstd::stream::write::Encoder as ZstdEncoder;
 
 static OUT_PATH: LazyLock<PathBuf> = LazyLock::new(|| PathBuf::from(&env::var("OUT_DIR").unwrap()));
 
-const EVAL_FILE_NAME: &str = "nn-f68ec79f0fe3.nnue";
-const EVAL_FILE_SMALL_NAME: &str = "nn-47fc8b7fff06.nnue";
+const EVAL_FILE_NAME: &str = "nn-fcf986aea78a.nnue";
 
 static SF_SOURCE_FILES: LazyLock<Vec<PathBuf>> = LazyLock::new(|| {
     assert!(
@@ -35,7 +34,6 @@ static SF_SOURCE_FILES: LazyLock<Vec<PathBuf>> = LazyLock::new(|| {
         "Stockfish/src/**/*.cpp",
         "Stockfish/src/**/*.h",
         &format!("Stockfish/src/{}", EVAL_FILE_NAME),
-        &format!("Stockfish/src/{}", EVAL_FILE_SMALL_NAME),
         // Fairy-Stockfish
         "Fairy-Stockfish/src/Makefile",
         "Fairy-Stockfish/src/**/*.cpp",
@@ -71,14 +69,6 @@ fn main() {
             .join("Stockfish")
             .join("src")
             .join(EVAL_FILE_NAME),
-        0o644,
-    );
-    append_file(
-        &mut archive,
-        SF_BUILD_PATH
-            .join("Stockfish")
-            .join("src")
-            .join(EVAL_FILE_SMALL_NAME),
         0o644,
     );
     archive.into_inner().unwrap().finish().unwrap();
