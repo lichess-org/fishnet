@@ -44,7 +44,7 @@ url = "2"
 serde_repr = "0.1"
 webpki-roots = "1"
 ar = "0.9"
-quick-xml = { version = "0.40", features = ["serialize"] }
+quick-xml = { version = "0.41", features = ["serialize"] }
 semver = "1"
 futures-util = "0.3"
 self-replace = "1"
