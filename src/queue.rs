@@ -181,6 +181,7 @@ impl QueueState {
                     positions,
                     total_nodes: 0,
                     total_cpu_time: Duration::ZERO,
+                    last_progress_report: Instant::now(),
                 });
 
                 self.logger.progress(self.status_bar(), progress_at);
@@ -302,13 +303,13 @@ impl QueueState {
                         }
                     }
                 }
-                Err(pending) => {
-                    if !pending.work.matrix_wanted() {
+                Err(mut pending) => {
+                    if let Some(progress_report) = pending.debounced_progress_report() {
                         // Send partial analysis as progress report.
                         queue.api.submit_analysis(
                             pending.work.id(),
                             pending.flavor.eval_flavor(),
-                            pending.progress_report(),
+                            progress_report,
                         );
                     }
 
@@ -761,6 +762,7 @@ struct PendingBatch {
     positions: Vec<Option<Skip<PositionResponse>>>,
     total_nodes: u64,
     total_cpu_time: Duration,
+    last_progress_report: Instant,
 }
 
 impl PendingBatch {
@@ -780,17 +782,30 @@ impl PendingBatch {
         }
     }
 
-    fn progress_report(&self) -> Vec<Option<AnalysisPart>> {
-        self.positions
-            .iter()
-            .enumerate()
-            .map(|(i, p)| match p {
-                // Quirk: Lila distinguishes progress reports from complete
-                // analysis by looking at the first part.
-                Some(Skip::Present(pos)) if i > 0 => Some(pos.to_best()),
-                _ => None,
-            })
-            .collect()
+    fn debounced_progress_report(&mut self) -> Option<Vec<Option<AnalysisPart>>> {
+        if self.work.matrix_wanted() {
+            return None;
+        }
+
+        let now = Instant::now();
+        if now.duration_since(self.last_progress_report) < Duration::from_millis(3000) {
+            return None;
+        }
+
+        self.last_progress_report = now;
+
+        Some(
+            self.positions
+                .iter()
+                .enumerate()
+                .map(|(i, p)| match p {
+                    // Quirk: Lila distinguishes progress reports from complete
+                    // analysis by looking at the first part.
+                    Some(Skip::Present(pos)) if i > 0 => Some(pos.to_best()),
+                    _ => None,
+                })
+                .collect(),
+        )
     }
 
     fn pending(&self) -> usize {
