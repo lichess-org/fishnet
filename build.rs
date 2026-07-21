@@ -15,7 +15,7 @@ use zstd::stream::write::Encoder as ZstdEncoder;
 
 static OUT_PATH: LazyLock<PathBuf> = LazyLock::new(|| PathBuf::from(&env::var("OUT_DIR").unwrap()));
 
-const EVAL_FILE_NAME: &str = "nn-0ee0657fb25e.nnue";
+const EVAL_FILE_NAME: &str = "nn-89cb98a217f7.nnue";
 
 static SF_SOURCE_FILES: LazyLock<Vec<PathBuf>> = LazyLock::new(|| {
     assert!(
