@@ -4,22 +4,22 @@
 
 Client asks server:
 
-```javascript
+```
 POST https://lichess.org/fishnet/acquire
 
-{
-  "fishnet": {
-    "version": "2.3.4",
-    "apikey": "XXX"
-  }
-}
+User-Agent: fishnet-<os>-<arch>/<version>
+Authorization: Bearer <key>
+```
+```javascript
+{}
 ```
 
 Response with work:
 
-```javascript
+```
 202 OK
-
+```
+```javascript
 {
   "work": {
     "type": "analysis",
@@ -60,14 +60,14 @@ Client runs Stockfish and sends the analysis to server.
 The client can optionally report progress to the server, by sending null for
 the pending moves in `analysis`.
 
-```javascript
+```
 POST https://lichess.org/fishnet/analysis/{work_id}
 
+User-Agent: fishnet-<os>-<arch>/<version>
+Authorization: Bearer <key>
+```
+```javascript
 {
-  "fishnet": {
-    "version": "2.3.4",
-    "apikey": "XXX"
-  },
   "stockfish": {
     "flavor": "nnue" // or classical
   },
@@ -108,14 +108,14 @@ POST https://lichess.org/fishnet/analysis/{work_id}
 
 Or the move:
 
-```javascript
+```
 POST https://lichess.org/fishnet/move/{work_id}
 
+User-Agent: fishnet-<os>-<arch>/<version>
+Authorization: Bearer <key>
+```
+```javascript
 {
-  "fishnet": {
-    "version": "2.3.4",
-    "apikey": "XXX"
-  },
   "move": {
     "bestmove": "b7b8q"
   }
@@ -138,7 +138,8 @@ Accepted, with next job:
 
 ```
 202 Accepted
-
+```
+```
 [...]
 ```
 
@@ -151,12 +152,11 @@ another client.
 ```
 POST https://lichess.org/fishnet/abort/{work_id}
 
-{
-  "fishnet": {
-    "version": "2.3.4",
-    "apikey": "XXX"
-  }
-}
+User-Agent: fishnet-<os>-<arch>/<version>
+Authorization: Bearer <key>
+```
+```javascript
+{}
 ```
 
 Response:
@@ -171,6 +171,15 @@ Or abort not supported:
 404 Not found
 ```
 
+## General response codes
+
+For any of these, the client will stop until update or reconfiguration:
+
+- 400 Bad Request (Update required due to protocol change)
+- 401 Unauthorized (Unknown key)
+- 403 Forbidden (Key disabled)
+- 406 Not Acceptable (Update required)
+
 ## Status
 
 Useful to monitor and react to queue status or spawn spot instances.
@@ -179,9 +188,10 @@ Useful to monitor and react to queue status or spawn spot instances.
 GET https://lichess.org/fishnet/status
 ```
 
-```javascript
+```
 200 OK
-
+```
+```javascript
 {
   "analysis": {
     "user": { // User requested analysis (respond as soon as possible)
@@ -230,15 +240,8 @@ Key invalid/inactive:
 These experimental changes have already been implemented in the client, and
 future versions of the server might start using them.
 
-- Client version sent as header `User-Agent: fishnet-<os>-<arch>/<version>`.
-- Key sent as header `Authorization: Bearer <key>`.
-  In the future the key validation endpoint may be deprecated
-  in favor of a `GET /fishnet/key` request, a no-op to validate the header.
+- The key validation endpoint may be deprecated in favor of a
+  `GET /fishnet/key` request, a no-op to validate the header.
 - New optional `work.depth`.
 - New optional `work.multipv`, to get top _multipv_ scores and pvs
   at each depth.
-- Reject client until update or reconfiguration with status code:
-  - 400 Bad Request (Update required due to protocol change)
-  - 401 Unauthorized (Unknown key)
-  - 403 Forbidden (Key disabled)
-  - 406 Not Acceptable (Update required)

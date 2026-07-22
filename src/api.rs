@@ -1,4 +1,4 @@
-use std::{env, error::Error, fmt, fmt::Write, num::NonZeroU8, str::FromStr, time::Duration};
+use std::{error::Error, fmt, fmt::Write, num::NonZeroU8, str::FromStr, time::Duration};
 
 use arrayvec::ArrayString;
 use reqwest::{Client, StatusCode};
@@ -98,24 +98,7 @@ pub struct QueueStatus {
 }
 
 #[derive(Debug, Serialize)]
-pub struct VoidRequestBody {
-    fishnet: Fishnet,
-}
-
-#[derive(Debug, Serialize)]
-struct Fishnet {
-    version: &'static str,
-    apikey: String,
-}
-
-impl Fishnet {
-    fn authenticated(key: Option<Key>) -> Fishnet {
-        Fishnet {
-            version: env!("CARGO_PKG_VERSION"),
-            apikey: key.map_or("".to_owned(), |k| k.0),
-        }
-    }
-}
+pub struct VoidRequestBody {}
 
 #[derive(Debug, Serialize)]
 struct Stockfish {
@@ -341,14 +324,12 @@ pub enum Acquired {
 
 #[derive(Debug, Serialize)]
 struct AnalysisRequestBody {
-    fishnet: Fishnet,
     stockfish: Stockfish,
     analysis: Vec<Option<AnalysisPart>>,
 }
 
 #[derive(Debug, Serialize)]
 struct MoveRequestBody {
-    fishnet: Fishnet,
     #[serde(rename = "move")]
     m: BestMove,
 }
@@ -553,9 +534,7 @@ impl ApiActor {
             .client
             .post(&url)
             .bearer_auth(self.key.as_ref().map_or("", |k| &k.0))
-            .json(&VoidRequestBody {
-                fishnet: Fishnet::authenticated(self.key.clone()),
-            })
+            .json(&VoidRequestBody {})
             .send()
             .await?;
 
@@ -652,9 +631,7 @@ impl ApiActor {
                     .post(&url)
                     .bearer_auth(self.key.as_ref().map_or("", |k| &k.0))
                     .query(&query)
-                    .json(&VoidRequestBody {
-                        fishnet: Fishnet::authenticated(self.key.clone()),
-                    })
+                    .json(&VoidRequestBody {})
                     .send()
                     .await?;
 
@@ -704,7 +681,6 @@ impl ApiActor {
                         slow: false,
                     })
                     .json(&AnalysisRequestBody {
-                        fishnet: Fishnet::authenticated(self.key.clone()),
                         stockfish: Stockfish { flavor },
                         analysis,
                     })
@@ -730,7 +706,6 @@ impl ApiActor {
                     .post(&url)
                     .bearer_auth(self.key.as_ref().map_or("", |k| &k.0))
                     .json(&MoveRequestBody {
-                        fishnet: Fishnet::authenticated(self.key.clone()),
                         m: BestMove { best_move },
                     })
                     .send()
