@@ -31,7 +31,7 @@ jobs:
         id: cache
         with:
           path: ${{ runner.temp }}/cache-mount
-          key: cache-mount-${{ github.run-id }}
+          key: cache-mount-${{ github.run_id }}
           restore-keys: |
             cache-mount
       - uses: reproducible-containers/buildkit-cache-dance@5b81f4d29dc8397a7d341dba3aeecc7ec54d6361 # v3.2.0
@@ -44,7 +44,7 @@ jobs:
           context: .
           platforms: amd64
           cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-to: type=gha,mode=max,ignore-error=true
           load: true
       - uses: docker/build-push-action@v5
         id: docker_build_arm64
@@ -52,7 +52,7 @@ jobs:
           context: .
           platforms: arm64
           cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-to: type=gha,mode=max,ignore-error=true
           load: true
       - uses: docker/login-action@v3
         with:
