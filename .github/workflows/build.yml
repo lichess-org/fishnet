@@ -17,28 +17,28 @@ jobs:
       contents: read
       id-token: write
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           submodules: true
-      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-qemu-action@v4
         with:
           platforms: arm64
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
         id: setup-buildx
         with:
           platforms: linux/amd64,linux/arm64
-      - uses: actions/cache@v5
+      - uses: actions/cache@v6
         id: cache
         with:
           path: ${{ runner.temp }}/cache-mount
           key: cache-mount-${{ github.run_id }}
           restore-keys: |
             cache-mount
-      - uses: reproducible-containers/buildkit-cache-dance@5b81f4d29dc8397a7d341dba3aeecc7ec54d6361 # v3.2.0
+      - uses: reproducible-containers/buildkit-cache-dance@2925f5cfd92896e0f5a155899ff2ed2922b575c6 # v3.4.0
         with:
           builder: ${{ steps.setup-buildx.outputs.name }}
           cache-dir: ${{ runner.temp }}/cache-mount
-      - uses: docker/build-push-action@v5
+      - uses: docker/build-push-action@v7
         id: docker_build_amd64
         with:
           context: .
@@ -46,7 +46,7 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max,ignore-error=true
           load: true
-      - uses: docker/build-push-action@v5
+      - uses: docker/build-push-action@v7
         id: docker_build_arm64
         with:
           context: .
@@ -54,12 +54,12 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max,ignore-error=true
           load: true
-      - uses: docker/login-action@v3
+      - uses: docker/login-action@v4
         with:
           username: ${{ vars.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
         if: github.event_name == 'push'
-      - uses: docker/metadata-action@v5
+      - uses: docker/metadata-action@v6
         id: meta
         with:
           images: ${{ vars.DOCKERHUB_USERNAME }}/fishnet
@@ -71,7 +71,7 @@ jobs:
           labels: |
             org.opencontainers.image.licenses=GPL-3.0-or-later
         if: github.event_name == 'push'
-      - uses: docker/build-push-action@v5
+      - uses: docker/build-push-action@v7
         id: docker_push
         with:
           context: .
@@ -107,10 +107,10 @@ jobs:
           msystem: mingw64
           update: true
           install: mingw-w64-x86_64-sccache mingw-w64-x86_64-gcc mingw-w64-x86_64-rust mingw-w64-x86_64-make tar
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           submodules: true
-      - uses: actions/cache@v5
+      - uses: actions/cache@v6
         with:
           path: ${{ runner.temp }}/sccache
           key: sccache-windows-x86-64-${{ github.run_id }}
@@ -118,7 +118,7 @@ jobs:
             sccache-windows-x86-64
       - run: SCCACHE_CACHE_SIZE=250M SCCACHE_DIR=${{ runner.temp }}/sccache sccache --start-server
       - run: sccache --show-stats
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           repository: lichess-org/intel-sde
           ssh-key: ${{ secrets.ID_RSA_INTEL_SDE }}
@@ -143,14 +143,14 @@ jobs:
     env:
       RUSTC_WRAPPER: sccache
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           submodules: true
       - uses: dtolnay/rust-toolchain@stable
       - uses: taiki-e/install-action@v2
         with:
           tool: sccache
-      - uses: actions/cache@v5
+      - uses: actions/cache@v6
         with:
           path: ${{ runner.temp }}/sccache
           key: macos-x86-64-sccache-${{ github.run_id }}
@@ -174,7 +174,7 @@ jobs:
       CXXFLAGS: -target arm64-apple-macos11
       RUSTC_WRAPPER: sccache
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           submodules: true
       - uses: dtolnay/rust-toolchain@stable
@@ -183,7 +183,7 @@ jobs:
       - uses: taiki-e/install-action@v2
         with:
           tool: sccache
-      - uses: actions/cache@v5
+      - uses: actions/cache@v6
         with:
           path: ${{ runner.temp }}/sccache
           key: macos-aarch64-sccache-${{ github.run_id }}
@@ -209,7 +209,7 @@ jobs:
       - windows-x86-64
     if: github.event_name == 'push'
     steps:
-      - uses: signpath/github-action-submit-signing-request@v1
+      - uses: signpath/github-action-submit-signing-request@v2
         with:
           api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
           organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
@@ -241,7 +241,7 @@ jobs:
         with:
           merge-multiple: true
       - run: sha256sum fishnet-*
-      - uses: softprops/action-gh-release@v1
+      - uses: softprops/action-gh-release@v3
         with:
           name: fishnet ${{ steps.get_version.outputs.VERSION }}
           body: |
@@ -270,10 +270,9 @@ jobs:
         with:
           merge-multiple: true
       - run: sha256sum fishnet-*
-      - uses: shallwefootball/s3-upload-action@bcd7c2408245fd6cd19b5512a473b1a7a8b48a35
+      - uses: aws-actions/configure-aws-credentials@v6
         with:
-          aws_key_id: ${{ secrets.AWS_KEY_ID }}
-          aws_secret_access_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws_bucket: fishnet-releases
-          source_dir: .
-          destination_dir: ${{ steps.get_version.outputs.VERSION }}
+          aws-access-key-id: ${{ secrets.AWS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: eu-west-3
+      - run: aws s3 cp . "s3://fishnet-releases/${{ steps.get_version.outputs.VERSION }}/" --recursive --exclude '*' --include 'fishnet-*'
