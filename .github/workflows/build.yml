@@ -23,6 +23,7 @@ jobs:
       - id: engine_versions
         shell: bash
         run: |
+          git -C Stockfish fetch --tags --force
           stockfish_tag=$(git -C Stockfish describe --tags --exact-match)
           case "$stockfish_tag" in
             stockfish-*) stockfish_tag="sf_${stockfish_tag#stockfish-}" ;;
