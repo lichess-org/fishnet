@@ -154,6 +154,13 @@ impl EngineFlavor {
             EngineFlavor::MultiVariant => EvalFlavor::Hce,
         }
     }
+
+    pub fn version(self) -> &'static str {
+        match self {
+            EngineFlavor::Official => env!("OFFICIAL_STOCKFISH_VERSION"),
+            EngineFlavor::MultiVariant => env!("FAIRY_STOCKFISH_VERSION"),
+        }
+    }
 }
 
 #[derive(Debug, Default)]
@@ -193,6 +200,13 @@ impl EvalFlavor {
 
     pub fn is_hce(self) -> bool {
         matches!(self, EvalFlavor::Hce)
+    }
+
+    pub fn engine_version(self) -> &'static str {
+        match self {
+            EvalFlavor::Hce => EngineFlavor::MultiVariant.version(),
+            EvalFlavor::Nnue => EngineFlavor::Official.version(),
+        }
     }
 }
 

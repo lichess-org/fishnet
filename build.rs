@@ -56,6 +56,7 @@ fn main() {
         "cargo:rustc-env=FISHNET_TARGET={}",
         env::var("TARGET").unwrap()
     );
+    set_engine_versions();
 
     // Build Stockfish and Fairy-Stockfish and archive them
     // (along with eval files).
@@ -74,6 +75,50 @@ fn main() {
     archive.into_inner().unwrap().finish().unwrap();
 
     add_favicon();
+}
+
+fn set_engine_versions() {
+    println!(
+        "cargo:rustc-env=OFFICIAL_STOCKFISH_VERSION={}",
+        official_stockfish_version()
+    );
+    println!(
+        "cargo:rustc-env=FAIRY_STOCKFISH_VERSION=FairyStockfish-fsf_{}-{}",
+        git(
+            "Fairy-Stockfish",
+            ["show", "-s", "--format=%cd", "--date=format:%Y%m%d", "HEAD"]
+        ),
+        git("Fairy-Stockfish", ["rev-parse", "--short=12", "HEAD"])
+    );
+}
+
+fn official_stockfish_version() -> String {
+    let tag = git("Stockfish", ["describe", "--tags", "--exact-match"]);
+    let normalized = tag
+        .strip_prefix("stockfish-")
+        .map(|rest| format!("sf_{rest}"))
+        .or_else(|| tag.starts_with("sf_").then_some(tag))
+        .expect("Stockfish tag");
+    format!(
+        "OfficialStockfish-{}-{}",
+        normalized.replace('-', "_"),
+        git("Stockfish", ["rev-parse", "--short=12", "HEAD"])
+    )
+}
+
+fn git<const N: usize>(dir: &str, args: [&str; N]) -> String {
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(dir)
+        .args(args)
+        .output()
+        .unwrap_or_else(|err| panic!("Could not inspect {dir}: {err}"));
+    assert!(
+        output.status.success(),
+        "Could not inspect engine revision in {dir}: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    String::from_utf8(output.stdout).unwrap().trim().to_owned()
 }
 
 fn has_target_feature(feature: &str) -> bool {
