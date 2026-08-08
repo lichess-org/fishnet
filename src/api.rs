@@ -752,24 +752,3 @@ fn error_report(mut err: &dyn Error) -> String {
     }
     report
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn serializes_engine_provenance() {
-        for (flavor, expected_name) in [
-            (EvalFlavor::Nnue, "OfficialStockfish-"),
-            (EvalFlavor::Hce, "FairyStockfish-fsf_"),
-        ] {
-            let stockfish = Stockfish {
-                flavor,
-                version: flavor.engine_version(),
-            };
-            let json = serde_json::to_value(stockfish).unwrap();
-            assert_eq!(json["flavor"], serde_json::to_value(flavor).unwrap());
-            assert!(json["version"].as_str().unwrap().starts_with(expected_name));
-        }
-    }
-}

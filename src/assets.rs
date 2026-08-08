@@ -4,6 +4,7 @@ use std::{
     io,
     path::{Path, PathBuf},
     str,
+    sync::OnceLock,
 };
 
 use ar::Archive;
@@ -147,6 +148,9 @@ pub enum EngineFlavor {
     MultiVariant,
 }
 
+static OFFICIAL_STOCKFISH_VERSION: OnceLock<String> = OnceLock::new();
+static FAIRY_STOCKFISH_VERSION: OnceLock<String> = OnceLock::new();
+
 impl EngineFlavor {
     pub fn eval_flavor(self) -> EvalFlavor {
         match self {
@@ -155,11 +159,28 @@ impl EngineFlavor {
         }
     }
 
+    pub fn set_version(self, version: String) {
+        let version_slot = match self {
+            EngineFlavor::Official => &OFFICIAL_STOCKFISH_VERSION,
+            EngineFlavor::MultiVariant => &FAIRY_STOCKFISH_VERSION,
+        };
+        version_slot.get_or_init(|| match self {
+            EngineFlavor::Official => format!(
+                "OfficialStockfish/{version}/{}",
+                env!("OFFICIAL_STOCKFISH_HASH")
+            ),
+            EngineFlavor::MultiVariant => {
+                format!("FairyStockfish/{version}/{}", env!("FAIRY_STOCKFISH_HASH"))
+            }
+        });
+    }
+
     pub fn version(self) -> &'static str {
-        match self {
-            EngineFlavor::Official => env!("OFFICIAL_STOCKFISH_VERSION"),
-            EngineFlavor::MultiVariant => env!("FAIRY_STOCKFISH_VERSION"),
-        }
+        let version_slot = match self {
+            EngineFlavor::Official => &OFFICIAL_STOCKFISH_VERSION,
+            EngineFlavor::MultiVariant => &FAIRY_STOCKFISH_VERSION,
+        };
+        version_slot.get().expect("engine UCI initialized").as_str()
     }
 }
 

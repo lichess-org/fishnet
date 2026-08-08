@@ -56,7 +56,7 @@ fn main() {
         "cargo:rustc-env=FISHNET_TARGET={}",
         env::var("TARGET").unwrap()
     );
-    set_engine_versions();
+    set_engine_hashes();
 
     // Build Stockfish and Fairy-Stockfish and archive them
     // (along with eval files).
@@ -77,43 +77,17 @@ fn main() {
     add_favicon();
 }
 
-fn set_engine_versions() {
-    let official_stockfish_version = env::var("OFFICIAL_STOCKFISH_VERSION")
-        .ok()
-        .filter(|version| !version.is_empty())
-        .unwrap_or_else(official_stockfish_version);
-    let fairy_stockfish_version = env::var("FAIRY_STOCKFISH_VERSION")
-        .ok()
-        .filter(|version| !version.is_empty())
-        .unwrap_or_else(|| {
-            format!(
-                "FairyStockfish-fsf_{}-{}",
-                git(
-                    "Fairy-Stockfish",
-                    ["show", "-s", "--format=%cd", "--date=format:%Y%m%d", "HEAD"]
-                ),
-                git("Fairy-Stockfish", ["rev-parse", "--short=12", "HEAD"])
-            )
-        });
+fn set_engine_hashes() {
     println!(
-        "cargo:rustc-env=OFFICIAL_STOCKFISH_VERSION={}",
-        official_stockfish_version
+        "cargo:rustc-env=OFFICIAL_STOCKFISH_HASH={}",
+        env::var("OFFICIAL_STOCKFISH_HASH")
+            .unwrap_or_else(|_| git("Stockfish", ["rev-parse", "--short=12", "HEAD"]))
     );
-    println!("cargo:rustc-env=FAIRY_STOCKFISH_VERSION={fairy_stockfish_version}");
-}
-
-fn official_stockfish_version() -> String {
-    let tag = git("Stockfish", ["describe", "--tags", "--exact-match"]);
-    let normalized = tag
-        .strip_prefix("stockfish-")
-        .map(|rest| format!("sf_{rest}"))
-        .or_else(|| tag.starts_with("sf_").then_some(tag))
-        .expect("Stockfish tag");
-    format!(
-        "OfficialStockfish-{}-{}",
-        normalized.replace('-', "_"),
-        git("Stockfish", ["rev-parse", "--short=12", "HEAD"])
-    )
+    println!(
+        "cargo:rustc-env=FAIRY_STOCKFISH_HASH={}",
+        env::var("FAIRY_STOCKFISH_HASH")
+            .unwrap_or_else(|_| git("Fairy-Stockfish", ["rev-parse", "--short=12", "HEAD"]))
+    );
 }
 
 fn git<const N: usize>(dir: &str, args: [&str; N]) -> String {
