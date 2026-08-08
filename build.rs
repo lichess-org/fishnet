@@ -78,18 +78,28 @@ fn main() {
 }
 
 fn set_engine_versions() {
+    let official_stockfish_version = env::var("OFFICIAL_STOCKFISH_VERSION")
+        .ok()
+        .filter(|version| !version.is_empty())
+        .unwrap_or_else(official_stockfish_version);
+    let fairy_stockfish_version = env::var("FAIRY_STOCKFISH_VERSION")
+        .ok()
+        .filter(|version| !version.is_empty())
+        .unwrap_or_else(|| {
+            format!(
+                "FairyStockfish-fsf_{}-{}",
+                git(
+                    "Fairy-Stockfish",
+                    ["show", "-s", "--format=%cd", "--date=format:%Y%m%d", "HEAD"]
+                ),
+                git("Fairy-Stockfish", ["rev-parse", "--short=12", "HEAD"])
+            )
+        });
     println!(
         "cargo:rustc-env=OFFICIAL_STOCKFISH_VERSION={}",
-        official_stockfish_version()
+        official_stockfish_version
     );
-    println!(
-        "cargo:rustc-env=FAIRY_STOCKFISH_VERSION=FairyStockfish-fsf_{}-{}",
-        git(
-            "Fairy-Stockfish",
-            ["show", "-s", "--format=%cd", "--date=format:%Y%m%d", "HEAD"]
-        ),
-        git("Fairy-Stockfish", ["rev-parse", "--short=12", "HEAD"])
-    );
+    println!("cargo:rustc-env=FAIRY_STOCKFISH_VERSION={fairy_stockfish_version}");
 }
 
 fn official_stockfish_version() -> String {

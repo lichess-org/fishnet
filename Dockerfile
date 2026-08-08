@@ -3,6 +3,10 @@ ENV RUSTC_WRAPPER=/usr/bin/sccache
 ENV SCCACHE_DIR=/sccache
 ENV SCCACHE_CACHE_SIZE=250M
 WORKDIR /fishnet
+ARG OFFICIAL_STOCKFISH_VERSION
+ARG FAIRY_STOCKFISH_VERSION
+ENV OFFICIAL_STOCKFISH_VERSION=$OFFICIAL_STOCKFISH_VERSION
+ENV FAIRY_STOCKFISH_VERSION=$FAIRY_STOCKFISH_VERSION
 COPY . .
 RUN --mount=type=cache,target=/sccache sccache --show-stats && cargo auditable build --release -vv && sccache --show-stats
 
