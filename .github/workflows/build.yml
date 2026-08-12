@@ -120,10 +120,14 @@ jobs:
         with:
           msystem: mingw64
           update: true
-          install: mingw-w64-x86_64-sccache mingw-w64-x86_64-gcc mingw-w64-x86_64-rust mingw-w64-x86_64-make tar
+          install: git mingw-w64-x86_64-sccache mingw-w64-x86_64-gcc mingw-w64-x86_64-rust mingw-w64-x86_64-make tar
       - uses: actions/checkout@v7
         with:
           submodules: true
+      - id: engine_hashes
+        run: |
+          echo "official=$(git -C Stockfish rev-parse --short=12 HEAD)" >> "$GITHUB_OUTPUT"
+          echo "fairy=$(git -C Fairy-Stockfish rev-parse --short=12 HEAD)" >> "$GITHUB_OUTPUT"
       - uses: actions/cache@v6
         with:
           path: ${{ runner.temp }}/sccache
@@ -142,7 +146,7 @@ jobs:
         continue-on-error: true
       - run: tar xf intel-sde/sde-external-9.0.0-2021-11-07-win.tar.xz && echo SDE_PATH=$(cygpath -u $GITHUB_WORKSPACE)/sde-external-9.0.0-2021-11-07-win/sde.exe | tee $GITHUB_ENV
         if: steps.sde.outcome == 'success'
-      - run: cargo build --release --target x86_64-pc-windows-gnu -vv
+      - run: OFFICIAL_STOCKFISH_HASH=${{ steps.engine_hashes.outputs.official }} FAIRY_STOCKFISH_HASH=${{ steps.engine_hashes.outputs.fairy }} cargo build --release --target x86_64-pc-windows-gnu -vv
       - run: mv target/x86_64-pc-windows-gnu/release/fishnet.exe fishnet-x86_64-pc-windows-gnu-unsigned.exe
       - uses: actions/upload-artifact@v7
         id: upload-unsigned-artifact
