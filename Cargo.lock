@@ -373,7 +373,7 @@ checksum = "3e0f1c7c3a72c66fd80abe965175f7523475c0489a87d3ff9d6e8c87d87a9d2d"
 
 [[package]]
 name = "fishnet"
-version = "2.14.1-dev"
+version = "2.14.1"
 dependencies = [
  "ar",
  "arrayvec",
