@@ -48,7 +48,7 @@ quick-xml = { version = "0.42", features = ["serialize"] }
 semver = "1"
 futures-util = "0.3"
 self-replace = "1"
-zstd = { version = "0.13", default-features = false }
+zstd = { version = "0.14", default-features = false }
 
 [target.'cfg(target_arch = "x86_64")'.dependencies]
 raw-cpuid = "11"
