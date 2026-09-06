@@ -149,7 +149,6 @@ pub enum EngineFlavor {
 }
 
 static OFFICIAL_STOCKFISH_VERSION: OnceLock<String> = OnceLock::new();
-static FAIRY_STOCKFISH_VERSION: OnceLock<String> = OnceLock::new();
 
 impl EngineFlavor {
     pub fn eval_flavor(self) -> EvalFlavor {
@@ -160,27 +159,29 @@ impl EngineFlavor {
     }
 
     pub fn set_version(self, version: String) {
-        let version_slot = match self {
-            EngineFlavor::Official => &OFFICIAL_STOCKFISH_VERSION,
-            EngineFlavor::MultiVariant => &FAIRY_STOCKFISH_VERSION,
-        };
-        version_slot.get_or_init(|| match self {
-            EngineFlavor::Official => format!(
-                "OfficialStockfish/{version}/{}",
-                env!("OFFICIAL_STOCKFISH_HASH")
-            ),
-            EngineFlavor::MultiVariant => {
-                format!("FairyStockfish/{version}/{}", env!("FAIRY_STOCKFISH_HASH"))
-            }
-        });
+        if self == EngineFlavor::Official {
+            OFFICIAL_STOCKFISH_VERSION.get_or_init(|| {
+                format!(
+                    "OfficialStockfish/{version}/{}",
+                    env!("OFFICIAL_STOCKFISH_HASH")
+                )
+            });
+        }
     }
 
     pub fn version(self) -> &'static str {
-        let version_slot = match self {
-            EngineFlavor::Official => &OFFICIAL_STOCKFISH_VERSION,
-            EngineFlavor::MultiVariant => &FAIRY_STOCKFISH_VERSION,
-        };
-        version_slot.get().expect("engine UCI initialized").as_str()
+        match self {
+            EngineFlavor::Official => OFFICIAL_STOCKFISH_VERSION
+                .get()
+                .expect("engine UCI initialized")
+                .as_str(),
+            EngineFlavor::MultiVariant => concat!(
+                "FairyStockfish/fsf_",
+                env!("FAIRY_STOCKFISH_DATE"),
+                "/",
+                env!("FAIRY_STOCKFISH_HASH")
+            ),
+        }
     }
 }
 
