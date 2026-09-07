@@ -381,8 +381,23 @@ impl Score {
     pub fn is_plausible(self) -> bool {
         match self {
             Score::Cp(_) => true,
-            Score::Mate(mate) => mate.abs() <= 246, // Stockfish MAX_PLY
+            Score::Mate(mate) => mate.unsigned_abs() <= 246, // Stockfish MAX_PLY
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Score;
+
+    #[test]
+    fn score_plausibility_boundaries() {
+        assert!(Score::Cp(i64::MIN).is_plausible());
+        assert!(Score::Mate(-246).is_plausible());
+        assert!(Score::Mate(246).is_plausible());
+        assert!(!Score::Mate(-247).is_plausible());
+        assert!(!Score::Mate(247).is_plausible());
+        assert!(!Score::Mate(i64::MIN).is_plausible());
     }
 }
 
