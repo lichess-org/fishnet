@@ -38,13 +38,13 @@ Optional environment variables to configure Stockfish builds:
 ## Docker
 
 ```sh
-docker run -it --shm-size=256m --name fishnet -e KEY=abcdef niklasf/fishnet:2
+docker run -it --name fishnet -e KEY=abcdef niklasf/fishnet:2
 ```
 
 Per default, runs with `n-1` cores, alternatively, specify the number of cores to use with:
 
 ```sh
-docker run -it --shm-size=256m --name fishnet -e KEY=abcdef -e CORES=n niklasf/fishnet:2
+docker run -it --name fishnet -e KEY=abcdef -e CORES=n niklasf/fishnet:2
 ```
 
 For the full list of configurable environment variables, see [docker-entrypoint.sh](/scripts/docker-entrypoint.sh).
@@ -54,7 +54,7 @@ To update, since we named the image `fishnet`:
 ```sh
 docker rm fishnet
 docker pull niklasf/fishnet:2
-docker run -it --shm-size=256m --name fishnet -e KEY=abcdef niklasf/fishnet:2
+docker run -it --name fishnet -e KEY=abcdef niklasf/fishnet:2
 ```
 
 ## Kubernetes
@@ -77,9 +77,6 @@ spec:
     - name: fishnet-pod
       image: niklasf/fishnet:2
       imagePullPolicy: Always
-      volumeMounts:
-        - mountPath: /dev/shm
-          name: dshm
       env:
         # - name: CORES
         #   valueFrom:
@@ -91,10 +88,6 @@ spec:
             secretKeyRef:
               name: lichess
               key: fishnet-private-key
-  volumes:
-    - name: dshm
-      emptyDir:
-        medium: Memory
   restartPolicy: Always
 ---
 apiVersion: v1

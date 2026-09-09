@@ -1,6 +1,6 @@
 [package]
 name = "fishnet"
-version = "2.14.1-dev" # pull, test, remove dev, publish, tag, bump dev, push
+version = "2.14.2-dev" # pull, test, remove dev, publish, tag, bump dev, push
 description = "Distributed Stockfish analysis for lichess.org"
 repository = "https://github.com/lichess-org/fishnet"
 readme = "README.md"
@@ -44,11 +44,11 @@ url = "2"
 serde_repr = "0.1"
 webpki-roots = "1"
 ar = "0.9"
-quick-xml = { version = "0.41", features = ["serialize"] }
+quick-xml = { version = "0.42", features = ["serialize"] }
 semver = "1"
 futures-util = "0.3"
 self-replace = "1"
-zstd = { version = "0.13", default-features = false }
+zstd = { version = "0.14", default-features = false }
 
 [target.'cfg(target_arch = "x86_64")'.dependencies]
 raw-cpuid = "11"
