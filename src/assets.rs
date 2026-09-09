@@ -4,6 +4,7 @@ use std::{
     io,
     path::{Path, PathBuf},
     str,
+    sync::OnceLock,
 };
 
 use ar::Archive;
@@ -147,11 +148,39 @@ pub enum EngineFlavor {
     MultiVariant,
 }
 
+static OFFICIAL_STOCKFISH_VERSION: OnceLock<String> = OnceLock::new();
+
 impl EngineFlavor {
     pub fn eval_flavor(self) -> EvalFlavor {
         match self {
             EngineFlavor::Official => EvalFlavor::Nnue,
             EngineFlavor::MultiVariant => EvalFlavor::Hce,
+        }
+    }
+
+    pub fn set_version(self, version: String) {
+        if self == EngineFlavor::Official {
+            OFFICIAL_STOCKFISH_VERSION.get_or_init(|| {
+                format!(
+                    "OfficialStockfish/{version}/{}",
+                    env!("OFFICIAL_STOCKFISH_HASH")
+                )
+            });
+        }
+    }
+
+    pub fn version(self) -> &'static str {
+        match self {
+            EngineFlavor::Official => OFFICIAL_STOCKFISH_VERSION
+                .get()
+                .expect("engine UCI initialized")
+                .as_str(),
+            EngineFlavor::MultiVariant => concat!(
+                "FairyStockfish/fsf_",
+                env!("FAIRY_STOCKFISH_DATE"),
+                "/",
+                env!("FAIRY_STOCKFISH_HASH")
+            ),
         }
     }
 }
@@ -193,6 +222,13 @@ impl EvalFlavor {
 
     pub fn is_hce(self) -> bool {
         matches!(self, EvalFlavor::Hce)
+    }
+
+    pub fn engine_version(self) -> &'static str {
+        match self {
+            EvalFlavor::Hce => EngineFlavor::MultiVariant.version(),
+            EvalFlavor::Nnue => EngineFlavor::Official.version(),
+        }
     }
 }
 

@@ -17,6 +17,35 @@ static OUT_PATH: LazyLock<PathBuf> = LazyLock::new(|| PathBuf::from(&env::var("O
 
 const EVAL_FILE_NAME: &str = "nn-1a298aa575a0.nnue";
 
+static OFFICIAL_STOCKFISH_HASH: LazyLock<String> = LazyLock::new(|| {
+    env_or_git(
+        "OFFICIAL_STOCKFISH_HASH",
+        "Stockfish",
+        ["rev-parse", "--short=12", "HEAD"],
+    )
+});
+static OFFICIAL_STOCKFISH_DATE: LazyLock<String> = LazyLock::new(|| {
+    env_or_git(
+        "OFFICIAL_STOCKFISH_DATE",
+        "Stockfish",
+        ["show", "-s", "--format=%cd", "--date=format:%Y%m%d", "HEAD"],
+    )
+});
+static FAIRY_STOCKFISH_HASH: LazyLock<String> = LazyLock::new(|| {
+    env_or_git(
+        "FAIRY_STOCKFISH_HASH",
+        "Fairy-Stockfish",
+        ["rev-parse", "--short=12", "HEAD"],
+    )
+});
+static FAIRY_STOCKFISH_DATE: LazyLock<String> = LazyLock::new(|| {
+    env_or_git(
+        "FAIRY_STOCKFISH_DATE",
+        "Fairy-Stockfish",
+        ["show", "-s", "--format=%cd", "--date=format:%Y%m%d", "HEAD"],
+    )
+});
+
 static SF_SOURCE_FILES: LazyLock<Vec<PathBuf>> = LazyLock::new(|| {
     assert!(
         Path::new("Stockfish").join("src").is_dir(),
@@ -56,6 +85,7 @@ fn main() {
         "cargo:rustc-env=FISHNET_TARGET={}",
         env::var("TARGET").unwrap()
     );
+    set_engine_revisions();
 
     // Build Stockfish and Fairy-Stockfish and archive them
     // (along with eval files).
@@ -74,6 +104,47 @@ fn main() {
     archive.into_inner().unwrap().finish().unwrap();
 
     add_favicon();
+}
+
+fn set_engine_revisions() {
+    println!("cargo:rerun-if-env-changed=OFFICIAL_STOCKFISH_HASH");
+    println!("cargo:rerun-if-env-changed=OFFICIAL_STOCKFISH_DATE");
+    println!("cargo:rerun-if-env-changed=FAIRY_STOCKFISH_HASH");
+    println!("cargo:rerun-if-env-changed=FAIRY_STOCKFISH_DATE");
+    println!(
+        "cargo:rustc-env=OFFICIAL_STOCKFISH_HASH={}",
+        *OFFICIAL_STOCKFISH_HASH
+    );
+    println!(
+        "cargo:rustc-env=FAIRY_STOCKFISH_HASH={}",
+        *FAIRY_STOCKFISH_HASH
+    );
+    println!(
+        "cargo:rustc-env=FAIRY_STOCKFISH_DATE={}",
+        *FAIRY_STOCKFISH_DATE
+    );
+}
+
+fn env_or_git<const N: usize>(var: &str, dir: &str, args: [&str; N]) -> String {
+    env::var(var)
+        .ok()
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| git(dir, args))
+}
+
+fn git<const N: usize>(dir: &str, args: [&str; N]) -> String {
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(dir)
+        .args(args)
+        .output()
+        .unwrap_or_else(|err| panic!("Could not inspect {dir}: {err}"));
+    assert!(
+        output.status.success(),
+        "Could not inspect engine revision in {dir}: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    String::from_utf8(output.stdout).unwrap().trim().to_owned()
 }
 
 fn has_target_feature(feature: &str) -> bool {
@@ -430,6 +501,17 @@ impl Target {
                 .env_remove("RUN_PREFIX")
                 .args(sde.map(|e| format!("SDE_PATH={e}")))
                 .args(sde.map(|e| format!("RUN_PREFIX={e} --")))
+                .args(
+                    (flavor == Flavor::Official)
+                        .then(|| {
+                            [
+                                format!("GIT_SHA={}", &OFFICIAL_STOCKFISH_HASH[..8]),
+                                format!("GIT_DATE={}", *OFFICIAL_STOCKFISH_DATE),
+                            ]
+                        })
+                        .into_iter()
+                        .flatten(),
+                )
                 .arg("-B")
                 .arg(format!("COMP={comp}"))
                 .arg(format!("CXX={cxx}"))

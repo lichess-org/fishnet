@@ -103,6 +103,7 @@ pub struct VoidRequestBody {}
 #[derive(Debug, Serialize)]
 struct Stockfish {
     flavor: EvalFlavor,
+    version: &'static str,
 }
 
 #[derive(Debug, Serialize)]
@@ -681,7 +682,10 @@ impl ApiActor {
                         slow: false,
                     })
                     .json(&AnalysisRequestBody {
-                        stockfish: Stockfish { flavor },
+                        stockfish: Stockfish {
+                            flavor,
+                            version: flavor.engine_version(),
+                        },
                         analysis,
                     })
                     .send()

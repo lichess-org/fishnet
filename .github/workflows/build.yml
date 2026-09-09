@@ -20,6 +20,13 @@ jobs:
       - uses: actions/checkout@v7
         with:
           submodules: true
+      - id: engine_revisions
+        shell: bash
+        run: |
+          echo "official=$(git -C Stockfish rev-parse --short=12 HEAD)" >> "$GITHUB_OUTPUT"
+          echo "official_date=$(git -C Stockfish show -s --format=%cd --date=format:%Y%m%d HEAD)" >> "$GITHUB_OUTPUT"
+          echo "fairy=$(git -C Fairy-Stockfish rev-parse --short=12 HEAD)" >> "$GITHUB_OUTPUT"
+          echo "fairy_date=$(git -C Fairy-Stockfish show -s --format=%cd --date=format:%Y%m%d HEAD)" >> "$GITHUB_OUTPUT"
       - uses: docker/setup-qemu-action@v4
         with:
           platforms: arm64
@@ -46,6 +53,11 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max,ignore-error=true
           load: true
+          build-args: |
+            OFFICIAL_STOCKFISH_HASH=${{ steps.engine_revisions.outputs.official }}
+            OFFICIAL_STOCKFISH_DATE=${{ steps.engine_revisions.outputs.official_date }}
+            FAIRY_STOCKFISH_HASH=${{ steps.engine_revisions.outputs.fairy }}
+            FAIRY_STOCKFISH_DATE=${{ steps.engine_revisions.outputs.fairy_date }}
       - uses: docker/build-push-action@v7
         id: docker_build_arm64
         with:
@@ -54,6 +66,11 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max,ignore-error=true
           load: true
+          build-args: |
+            OFFICIAL_STOCKFISH_HASH=${{ steps.engine_revisions.outputs.official }}
+            OFFICIAL_STOCKFISH_DATE=${{ steps.engine_revisions.outputs.official_date }}
+            FAIRY_STOCKFISH_HASH=${{ steps.engine_revisions.outputs.fairy }}
+            FAIRY_STOCKFISH_DATE=${{ steps.engine_revisions.outputs.fairy_date }}
       - uses: docker/login-action@v4
         with:
           username: ${{ vars.DOCKERHUB_USERNAME }}
@@ -79,6 +96,11 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            OFFICIAL_STOCKFISH_HASH=${{ steps.engine_revisions.outputs.official }}
+            OFFICIAL_STOCKFISH_DATE=${{ steps.engine_revisions.outputs.official_date }}
+            FAIRY_STOCKFISH_HASH=${{ steps.engine_revisions.outputs.fairy }}
+            FAIRY_STOCKFISH_DATE=${{ steps.engine_revisions.outputs.fairy_date }}
         if: github.event_name == 'push'
       - run: docker cp "$(docker create ${{ steps.docker_build_amd64.outputs.imageid }}):/fishnet" fishnet-x86_64-unknown-linux-musl
       - run: docker cp "$(docker create ${{ steps.docker_build_arm64.outputs.imageid }}):/fishnet" fishnet-aarch64-unknown-linux-musl
@@ -106,10 +128,16 @@ jobs:
         with:
           msystem: mingw64
           update: true
-          install: mingw-w64-x86_64-sccache mingw-w64-x86_64-gcc mingw-w64-x86_64-rust mingw-w64-x86_64-make tar
+          install: git mingw-w64-x86_64-sccache mingw-w64-x86_64-gcc mingw-w64-x86_64-rust mingw-w64-x86_64-make tar
       - uses: actions/checkout@v7
         with:
           submodules: true
+      - id: engine_revisions
+        run: |
+          echo "official=$(git -C Stockfish rev-parse --short=12 HEAD)" >> "$GITHUB_OUTPUT"
+          echo "official_date=$(git -C Stockfish show -s --format=%cd --date=format:%Y%m%d HEAD)" >> "$GITHUB_OUTPUT"
+          echo "fairy=$(git -C Fairy-Stockfish rev-parse --short=12 HEAD)" >> "$GITHUB_OUTPUT"
+          echo "fairy_date=$(git -C Fairy-Stockfish show -s --format=%cd --date=format:%Y%m%d HEAD)" >> "$GITHUB_OUTPUT"
       - uses: actions/cache@v6
         with:
           path: ${{ runner.temp }}/sccache
@@ -129,6 +157,11 @@ jobs:
       - run: tar xf intel-sde/sde-external-9.0.0-2021-11-07-win.tar.xz && echo SDE_PATH=$(cygpath -u $GITHUB_WORKSPACE)/sde-external-9.0.0-2021-11-07-win/sde.exe | tee $GITHUB_ENV
         if: steps.sde.outcome == 'success'
       - run: cargo build --release --target x86_64-pc-windows-gnu -vv
+        env:
+          OFFICIAL_STOCKFISH_HASH: ${{ steps.engine_revisions.outputs.official }}
+          OFFICIAL_STOCKFISH_DATE: ${{ steps.engine_revisions.outputs.official_date }}
+          FAIRY_STOCKFISH_HASH: ${{ steps.engine_revisions.outputs.fairy }}
+          FAIRY_STOCKFISH_DATE: ${{ steps.engine_revisions.outputs.fairy_date }}
       - run: mv target/x86_64-pc-windows-gnu/release/fishnet.exe fishnet-x86_64-pc-windows-gnu-unsigned.exe
       - uses: actions/upload-artifact@v7
         id: upload-unsigned-artifact
