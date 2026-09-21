@@ -246,75 +246,78 @@ impl QueueState {
     }
 
     fn maybe_finished(&mut self, mut queue: QueueStub, batch: BatchId) {
-        if let Some(pending) = self.pending.remove(&batch) {
-            match pending.try_into_completed() {
-                Ok(completed) => {
-                    let mut extra = Vec::new();
-                    extra.extend(short_variant_name(completed.variant).map(|n| n.to_owned()));
-                    if completed.flavor.eval_flavor().is_hce() {
-                        extra.push("hce".to_owned());
-                    }
-                    extra.push(match completed.nps() {
-                        Some(nps) => {
-                            let nnue_nps = if completed.flavor.eval_flavor() == EvalFlavor::Nnue {
-                                Some(nps)
-                            } else {
-                                None
-                            };
-                            self.stats_recorder.record_batch(
-                                completed.total_positions(),
-                                completed.total_nodes,
-                                nnue_nps,
-                            );
-                            format!("{} knps/core", nps / 1000)
-                        }
-                        None => "? nps".to_owned(),
-                    });
-                    let log = match completed.url {
-                        Some(ref url) => format!(
-                            "{} {} finished ({})",
-                            self.status_bar(),
-                            url,
-                            extra.join(", ")
-                        ),
-                        None => format!(
-                            "{} batch {} finished ({})",
-                            self.status_bar(),
-                            batch,
-                            extra.join(", ")
-                        ),
-                    };
-                    match completed.work {
-                        Work::Analysis { id, .. } => {
-                            self.logger.info(&log);
-                            queue.api.submit_analysis(
-                                id,
-                                completed.flavor,
-                                completed.into_analysis(),
-                            );
-                        }
-                        Work::Move { id, .. } => {
-                            self.logger.debug(&log);
-                            self.move_submissions.push_back(MoveSubmission {
-                                batch_id: id,
-                                best_move: completed.into_best_move(),
-                            });
-                            queue.move_submitted();
-                        }
-                    }
-                }
-                Err(mut pending) => {
-                    if let Some(progress_report) = pending.debounced_progress_report() {
-                        // Send partial analysis as progress report.
-                        queue.api.submit_analysis(
-                            pending.work.id(),
-                            pending.flavor,
-                            progress_report,
-                        );
-                    }
+        let Some(pending) = self.pending.get_mut(&batch) else {
+            return;
+        };
 
-                    self.pending.insert(pending.work.id(), pending);
-                }
+        if !pending.is_complete() {
+            if let Some(progress_report) = pending.debounced_progress_report() {
+                queue.api.submit_analysis(
+                    pending.work.id(),
+                    pending.flavor,
+                    progress_report,
+                );
+            }
+            return;
+        }
+
+        let completed = self
+            .pending
+            .remove(&batch)
+            .expect("checked above")
+            .into_completed();
+
+        let mut extra = Vec::new();
+        extra.extend(short_variant_name(completed.variant).map(|n| n.to_owned()));
+        if completed.flavor.eval_flavor().is_hce() {
+            extra.push("hce".to_owned());
+        }
+        extra.push(match completed.nps() {
+            Some(nps) => {
+                let nnue_nps = if completed.flavor.eval_flavor() == EvalFlavor::Nnue {
+                    Some(nps)
+                } else {
+                    None
+                };
+                self.stats_recorder.record_batch(
+                    completed.total_positions(),
+                    completed.total_nodes,
+                    nnue_nps,
+                );
+                format!("{} knps/core", nps / 1000)
+            }
+            None => "? nps".to_owned(),
+        });
+        let log = match completed.url {
+            Some(ref url) => format!(
+                "{} {} finished ({})",
+                self.status_bar(),
+                url,
+                extra.join(", ")
+            ),
+            None => format!(
+                "{} batch {} finished ({})",
+                self.status_bar(),
+                batch,
+                extra.join(", ")
+            ),
+        };
+        match completed.work {
+            Work::Analysis { id, .. } => {
+                self.logger.info(&log);
+                queue.api.submit_analysis(
+                    id,
+                    completed.flavor,
+                    completed.into_analysis(),
+                );
+            }
+            Work::Move { id, .. } => {
+                self.logger.debug(&log);
+                self.move_submissions.push_back(MoveSubmission {
+                    batch_id: id,
+                    best_move: completed.into_best_move(),
+                });
+                queue.move_submitted();
             }
         }
     }
@@ -773,19 +776,19 @@ struct PendingBatch {
 }
 
 impl PendingBatch {
-    #[allow(clippy::result_large_err)]
-    fn try_into_completed(self) -> Result<CompletedBatch, PendingBatch> {
-        match self.positions.clone().into_iter().collect() {
-            Some(positions) => Ok(CompletedBatch {
-                work: self.work,
-                url: self.url,
-                flavor: self.flavor,
-                variant: self.variant,
-                positions,
-                total_nodes: self.total_nodes,
-                total_cpu_time: self.total_cpu_time,
-            }),
-            None => Err(self),
+    fn is_complete(&self) -> bool {
+        self.positions.iter().all(Option::is_some)
+    }
+
+    fn into_completed(self) -> CompletedBatch {
+        CompletedBatch {
+            positions: self.positions.into_iter().flatten().collect(),
+            work: self.work,
+            url: self.url,
+            flavor: self.flavor,
+            variant: self.variant,
+            total_nodes: self.total_nodes,
+            total_cpu_time: self.total_cpu_time,
         }
     }
 
