@@ -12,4 +12,5 @@ if [ -n "$SYSTEM_BACKLOG" ]; then args+=("--system-backlog" "$SYSTEM_BACKLOG"); 
 if [ -n "$MAX_BACKOFF" ]; then args+=("--max-backoff" "$MAX_BACKOFF"); fi
 if [ -n "$CPU_PRIORITY" ]; then args+=("--cpu-priority" "$CPU_PRIORITY"); fi
 
-exec /fishnet "${args[@]}"
+: "${NICENESS:=0}"
+exec nice -n "$NICENESS" /fishnet "${args[@]}"
