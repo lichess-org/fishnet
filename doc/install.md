@@ -49,6 +49,19 @@ docker run -it --name fishnet -e KEY=abcdef -e CORES=n niklasf/fishnet:2
 
 For the full list of configurable environment variables, see [docker-entrypoint.sh](/scripts/docker-entrypoint.sh).
 
+For a security-hardened run, use the following arguments as well:
+
+```sh
+docker run -it \
+  --name fishnet \
+  --read-only \
+  --tmpfs /tmp:rw,nosuid,nodev,exec,size=256m \
+  --cap-drop=ALL \
+  --security-opt="no-new-privileges=true" \
+  -e KEY=abcdef \
+  niklasf/fishnet:2
+```
+
 To update, since we named the image `fishnet`:
 
 ```sh
@@ -56,6 +69,42 @@ docker rm fishnet
 docker pull niklasf/fishnet:2
 docker run -it --name fishnet -e KEY=abcdef niklasf/fishnet:2
 ```
+
+## Docker Compose
+
+Create a security-hardened `compose.yml` file:
+
+```yaml
+services:
+  fishnet:
+    image: niklasf/fishnet:2
+
+    environment:
+      KEY: ${KEY}
+
+    # No files outside the /tmp stays writable
+    read_only: true
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,exec,size=256m
+
+    # Drop all Linux capabilities
+    cap_drop:
+      - ALL
+
+    # Prevent processes from gaining additional privileges
+    security_opt:
+      - no-new-privileges:true
+```
+
+Set the Fishnet key and start the container:
+
+```sh
+KEY=abcdef docker compose up -d
+```
+
+Again, the full list of configurable environment variables are in [docker-entrypoint.sh](/scripts/docker-entrypoint.sh) file.
+
+Fishnet runs as an unprivileged user (`10001`) by default. The root filesystem is mounted read-only. Fishnet extracts the bundled Stockfish executables to `/tmp` at runtime, so `/tmp` must remain writable and executable.
 
 ## Kubernetes
 
