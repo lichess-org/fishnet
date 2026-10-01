@@ -38,41 +38,43 @@ Optional environment variables to configure Stockfish builds:
 ## Docker
 
 ```sh
-docker run -it --name fishnet -e KEY=abcdef niklasf/fishnet:2
-```
-
-Per default, runs with `n-1` cores, alternatively, specify the number of cores to use with:
-
-```sh
-docker run -it --name fishnet -e KEY=abcdef -e CORES=n niklasf/fishnet:2
-```
-
-For the full list of configurable environment variables, see [docker-entrypoint.sh](/scripts/docker-entrypoint.sh).
-
-For a security-hardened run, use the following arguments as well:
-
-```sh
 docker run -it \
   --name fishnet \
   --read-only \
-  --tmpfs /tmp:rw,nosuid,nodev,exec,size=256m \
+  --tmpfs /tmp:rw,nosuid,nodev,exec \
   --cap-drop=ALL \
   --security-opt="no-new-privileges=true" \
   -e KEY=abcdef \
   niklasf/fishnet:2
 ```
 
+Per default, runs with `n-1` cores, alternatively, specify the number of cores to use with:
+
+```sh
+docker run -it \
+  --name fishnet \
+  --read-only \
+  --tmpfs /tmp:rw,nosuid,nodev,exec \
+  --cap-drop=ALL \
+  --security-opt="no-new-privileges=true" \
+  -e KEY=abcdef \
+  -e CORES=n \
+  niklasf/fishnet:2
+```
+
+For the full list of configurable environment variables, see [docker-entrypoint.sh](/scripts/docker-entrypoint.sh).
+
 To update, since we named the image `fishnet`:
 
 ```sh
 docker rm fishnet
 docker pull niklasf/fishnet:2
-docker run -it --name fishnet -e KEY=abcdef niklasf/fishnet:2
+# Run again as described above
 ```
 
 ## Docker Compose
 
-Create a security-hardened `compose.yml` file:
+Create a `compose.yml` file:
 
 ```yaml
 services:
@@ -82,16 +84,13 @@ services:
     environment:
       KEY: ${KEY}
 
-    # No files outside the /tmp stays writable
     read_only: true
     tmpfs:
-      - /tmp:rw,nosuid,nodev,exec,size=256m
+      - /tmp:rw,nosuid,nodev,exec
 
-    # Drop all Linux capabilities
     cap_drop:
       - ALL
 
-    # Prevent processes from gaining additional privileges
     security_opt:
       - no-new-privileges:true
 ```
@@ -103,8 +102,6 @@ KEY=abcdef docker compose up -d
 ```
 
 Again, the full list of configurable environment variables are in [docker-entrypoint.sh](/scripts/docker-entrypoint.sh) file.
-
-Fishnet runs as an unprivileged user (`10001`) by default. The root filesystem is mounted read-only. Fishnet extracts the bundled Stockfish executables to `/tmp` at runtime, so `/tmp` must remain writable and executable.
 
 ## Kubernetes
 
