@@ -38,13 +38,28 @@ Optional environment variables to configure Stockfish builds:
 ## Docker
 
 ```sh
-docker run -it --name fishnet -e KEY=abcdef niklasf/fishnet:2
+docker run -it \
+  --name fishnet \
+  --read-only \
+  --tmpfs /tmp:rw,nosuid,nodev,exec \
+  --cap-drop=ALL \
+  --security-opt="no-new-privileges=true" \
+  -e KEY=abcdef \
+  niklasf/fishnet:2
 ```
 
 Per default, runs with `n-1` cores, alternatively, specify the number of cores to use with:
 
 ```sh
-docker run -it --name fishnet -e KEY=abcdef -e CORES=n niklasf/fishnet:2
+docker run -it \
+  --name fishnet \
+  --read-only \
+  --tmpfs /tmp:rw,nosuid,nodev,exec \
+  --cap-drop=ALL \
+  --security-opt="no-new-privileges=true" \
+  -e KEY=abcdef \
+  -e CORES=n \
+  niklasf/fishnet:2
 ```
 
 For the full list of configurable environment variables, see [docker-entrypoint.sh](/scripts/docker-entrypoint.sh).
@@ -54,7 +69,44 @@ To update, since we named the image `fishnet`:
 ```sh
 docker rm fishnet
 docker pull niklasf/fishnet:2
-docker run -it --name fishnet -e KEY=abcdef niklasf/fishnet:2
+# Run again as described above
+```
+
+## Docker Compose
+
+Create a `compose.yml` file:
+
+```yaml
+services:
+  fishnet:
+    image: niklasf/fishnet:2
+    environment:
+      - KEY
+      - CORES
+      - ENDPOINT
+      - USER_BACKLOG
+      - SYSTEM_BACKLOG
+      - MAX_BACKOFF
+      - CPU_PRIORITY
+    read_only: true
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,exec
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+```
+
+And a corresponding `.env` file:
+
+```
+KEY=abcdef
+```
+
+Then:
+
+```sh
+docker compose up -d
 ```
 
 ## Kubernetes
