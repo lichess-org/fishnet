@@ -80,28 +80,30 @@ Create a `compose.yml` file:
 services:
   fishnet:
     image: niklasf/fishnet:2
-
     environment:
-      KEY: ${KEY}
-
+      - KEY
     read_only: true
     tmpfs:
       - /tmp:rw,nosuid,nodev,exec
-
     cap_drop:
       - ALL
-
     security_opt:
       - no-new-privileges:true
 ```
 
-Set the Fishnet key and start the container:
+And a corresponding `.env` file:
 
-```sh
-KEY=abcdef docker compose up -d
+```
+KEY=abcdef
 ```
 
-Again, the full list of configurable environment variables are in [docker-entrypoint.sh](/scripts/docker-entrypoint.sh) file.
+Then:
+
+```sh
+docker compose up -d
+```
+
+Again, the full list of configurable environment variables are in the [docker-entrypoint.sh](/scripts/docker-entrypoint.sh) file.
 
 ## Kubernetes
 
