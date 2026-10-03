@@ -82,6 +82,12 @@ services:
     image: niklasf/fishnet:2
     environment:
       - KEY
+      - CORES
+      - ENDPOINT
+      - USER_BACKLOG
+      - SYSTEM_BACKLOG
+      - MAX_BACKOFF
+      - CPU_PRIORITY
     read_only: true
     tmpfs:
       - /tmp:rw,nosuid,nodev,exec
@@ -102,8 +108,6 @@ Then:
 ```sh
 docker compose up -d
 ```
-
-Again, the full list of configurable environment variables are in the [docker-entrypoint.sh](/scripts/docker-entrypoint.sh) file.
 
 ## Kubernetes
 
