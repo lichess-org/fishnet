@@ -17,6 +17,11 @@ static OUT_PATH: LazyLock<PathBuf> = LazyLock::new(|| PathBuf::from(&env::var("O
 
 const EVAL_FILE_NAME: &str = "nn-1a298aa575a0.nnue";
 
+static OFFICIAL_STOCKFISH_GIT: LazyLock<Option<GitInfo>> =
+    LazyLock::new(|| GitInfo::try_read("Stockfish"));
+static FAIRY_STOCKFISH_GIT: LazyLock<Option<GitInfo>> =
+    LazyLock::new(|| GitInfo::try_read("Fairy-Stockfish"));
+
 static SF_SOURCE_FILES: LazyLock<Vec<PathBuf>> = LazyLock::new(|| {
     assert!(
         Path::new("Stockfish").join("src").is_dir(),
@@ -57,6 +62,28 @@ fn main() {
         env::var("TARGET").unwrap()
     );
 
+    // Engine versions, mirroring the way official Stockfish would report its
+    // own version.
+    println!(
+        "cargo:rustc-env=OFFICIAL_STOCKFISH_VERSION={}",
+        engine_version_info(
+            "Stockfish",
+            &engine_version_constant(
+                "Stockfish/src/misc.cpp",
+                "constexpr std::string_view version = \"",
+            ),
+            OFFICIAL_STOCKFISH_GIT.as_ref()
+        )
+    );
+    println!(
+        "cargo:rustc-env=FAIRY_STOCKFISH_VERSION={}",
+        engine_version_info(
+            "Fairy-Stockfish",
+            &engine_version_constant("Fairy-Stockfish/src/misc.cpp", "const string Version = \""),
+            FAIRY_STOCKFISH_GIT.as_ref()
+        )
+    );
+
     // Build Stockfish and Fairy-Stockfish and archive them
     // (along with eval files).
     let mut archive = ar::Builder::new(
@@ -74,6 +101,60 @@ fn main() {
     archive.into_inner().unwrap().finish().unwrap();
 
     add_favicon();
+}
+
+fn engine_version_constant(path: &str, prefix: &str) -> String {
+    fs::read_to_string(path)
+        .unwrap()
+        .lines()
+        .find_map(|line| line.strip_prefix(prefix)?.split_once('"'))
+        .unwrap_or_else(|| panic!("Could not find version in {path}"))
+        .0
+        .to_owned()
+}
+
+fn engine_version_info(name: &str, version: &str, git: Option<&GitInfo>) -> String {
+    match (version, git) {
+        ("dev" | "", Some(git)) => format!(
+            "{name} dev-{}{}-{}",
+            git.date,
+            if git.dirty { "-m" } else { "" },
+            git.sha
+        ),
+        ("dev" | "", None) => {
+            println!("cargo:warning=Could not determine git revision of {name}");
+            format!("{name} dev-nogit")
+        }
+        (version, _) => format!("{name} {version}"),
+    }
+}
+
+struct GitInfo {
+    sha: String,
+    date: String,
+    dirty: bool,
+}
+
+impl GitInfo {
+    fn try_read(dir: &str) -> Option<GitInfo> {
+        let git = |args: &[&str]| {
+            Command::new("git")
+                .arg("-C")
+                .arg(dir)
+                .args(args)
+                .output()
+                .ok()
+                .filter(|output| output.status.success())
+                .and_then(|output| String::from_utf8(output.stdout).ok())
+                .map(|stdout| stdout.trim().to_owned())
+        };
+
+        Some(GitInfo {
+            sha: git(&["rev-parse", "HEAD"])?.chars().take(8).collect(),
+            date: git(&["show", "-s", "--date=format:%Y%m%d", "--format=%cd", "HEAD"])?,
+            dirty: !git(&["status", "--porcelain", "--untracked-files=no"])?.is_empty(),
+        })
+    }
 }
 
 fn has_target_feature(feature: &str) -> bool {
@@ -430,6 +511,20 @@ impl Target {
                 .env_remove("RUN_PREFIX")
                 .args(sde.map(|e| format!("SDE_PATH={e}")))
                 .args(sde.map(|e| format!("RUN_PREFIX={e} --")))
+                .args(
+                    match flavor {
+                        Flavor::Official => OFFICIAL_STOCKFISH_GIT.as_ref(),
+                        Flavor::MultiVariant => FAIRY_STOCKFISH_GIT.as_ref(),
+                    }
+                    .into_iter()
+                    .flat_map(|git| {
+                        [
+                            format!("GIT_SHA={}", git.sha),
+                            format!("GIT_DATE={}", git.date),
+                            format!("GIT_DIFFINDEX={}", if git.dirty { "1" } else { "" }),
+                        ]
+                    }),
+                )
                 .arg("-B")
                 .arg(format!("COMP={comp}"))
                 .arg(format!("CXX={cxx}"))

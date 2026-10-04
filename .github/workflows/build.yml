@@ -106,7 +106,7 @@ jobs:
         with:
           msystem: mingw64
           update: true
-          install: mingw-w64-x86_64-sccache mingw-w64-x86_64-gcc mingw-w64-x86_64-rust mingw-w64-x86_64-make tar
+          install: git mingw-w64-x86_64-sccache mingw-w64-x86_64-gcc mingw-w64-x86_64-rust mingw-w64-x86_64-make tar
       - uses: actions/checkout@v7
         with:
           submodules: true

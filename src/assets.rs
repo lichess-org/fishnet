@@ -154,6 +154,13 @@ impl EngineFlavor {
             EngineFlavor::MultiVariant => EvalFlavor::Hce,
         }
     }
+
+    pub fn engine_version(self) -> &'static str {
+        match self {
+            EngineFlavor::Official => env!("OFFICIAL_STOCKFISH_VERSION"),
+            EngineFlavor::MultiVariant => env!("FAIRY_STOCKFISH_VERSION"),
+        }
+    }
 }
 
 #[derive(Debug, Default)]
