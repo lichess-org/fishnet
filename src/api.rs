@@ -16,7 +16,7 @@ use tokio::{
 use url::Url;
 
 use crate::{
-    assets::EvalFlavor,
+    assets::{EngineFlavor, EvalFlavor},
     configure::{Endpoint, Key, KeyError},
     ipc::Chunk,
     logger::Logger,
@@ -62,7 +62,7 @@ enum ApiMessage {
     },
     SubmitAnalysis {
         batch_id: BatchId,
-        flavor: EvalFlavor,
+        flavor: EngineFlavor,
         analysis: Vec<Option<AnalysisPart>>,
     },
     SubmitMove {
@@ -440,7 +440,7 @@ impl ApiStub {
     pub fn submit_analysis(
         &mut self,
         batch_id: BatchId,
-        flavor: EvalFlavor,
+        flavor: EngineFlavor,
         analysis: Vec<Option<AnalysisPart>>,
     ) {
         self.tx
@@ -683,7 +683,7 @@ impl ApiActor {
                     })
                     .json(&AnalysisRequestBody {
                         stockfish: Stockfish {
-                            flavor,
+                            flavor: flavor.eval_flavor(),
                             version: flavor.engine_version(),
                         },
                         analysis,

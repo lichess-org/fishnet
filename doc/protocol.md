@@ -69,7 +69,8 @@ Authorization: Bearer <key>
 ```javascript
 {
   "stockfish": {
-    "flavor": "nnue" // or classical
+    "flavor": "nnue", // or classical
+    "version": "Stockfish 19" // or for example "Fairy-Stockfish dev-20251006-a8092108"
   },
   "analysis": [
     { // first ply

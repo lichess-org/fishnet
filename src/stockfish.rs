@@ -15,17 +15,12 @@ use crate::{
     util::NevermindExt as _,
 };
 
-pub fn channel(
-    flavor: EngineFlavor,
-    exe: PathBuf,
-    logger: Logger,
-) -> (StockfishStub, StockfishActor) {
+pub fn channel(exe: PathBuf, logger: Logger) -> (StockfishStub, StockfishActor) {
     let (tx, rx) = mpsc::channel(1);
     (
         StockfishStub { tx },
         StockfishActor {
             rx,
-            flavor,
             exe,
             initialized: false,
             logger,
@@ -54,7 +49,6 @@ impl StockfishStub {
 
 pub struct StockfishActor {
     rx: mpsc::Receiver<StockfishMessage>,
-    flavor: EngineFlavor,
     exe: PathBuf,
     initialized: bool,
     logger: Logger,
@@ -217,21 +211,6 @@ impl StockfishActor {
 
     async fn init(&mut self, stdout: &mut Stdout, stdin: &mut Stdin) -> io::Result<()> {
         if !mem::replace(&mut self.initialized, true) {
-            stdin.write_line("uci").await?;
-            stdin.flush().await?;
-
-            let mut version = "unknown".to_owned();
-            loop {
-                let line = stdout.read_line().await?;
-                if let Some(name) = line.strip_prefix("id name ") {
-                    version = name.to_owned();
-                }
-                if line.trim_end() == "uciok" {
-                    break;
-                }
-            }
-            self.flavor.set_version(version.replace('/', "_"));
-
             stdin
                 .write_line("setoption name UCI_Chess960 value true")
                 .await?;

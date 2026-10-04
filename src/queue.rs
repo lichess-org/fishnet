@@ -289,7 +289,7 @@ impl QueueState {
                             self.logger.info(&log);
                             queue.api.submit_analysis(
                                 id,
-                                completed.flavor.eval_flavor(),
+                                completed.flavor,
                                 completed.into_analysis(),
                             );
                         }
@@ -308,7 +308,7 @@ impl QueueState {
                         // Send partial analysis as progress report.
                         queue.api.submit_analysis(
                             pending.work.id(),
-                            pending.flavor.eval_flavor(),
+                            pending.flavor,
                             progress_report,
                         );
                     }
@@ -409,7 +409,7 @@ impl QueueActor {
                     .debug(&format!("Completed empty batch {context}."));
                 self.api.submit_analysis(
                     completed.work.id(),
-                    completed.flavor.eval_flavor(),
+                    completed.flavor,
                     completed.into_analysis(),
                 );
             }
