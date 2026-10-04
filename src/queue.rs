@@ -570,15 +570,19 @@ impl IncomingBatch {
 
         let root_fen = Fen::from_position(&root_pos, EnPassantMode::Legal);
 
-        let body_moves = {
+        // Also collect outcomes of all positions, including the root.
+        let (body_moves, outcomes) = {
             let mut moves = Vec::with_capacity(body.moves.len());
+            let mut outcomes = Vec::with_capacity(body.moves.len() + 1);
             let mut pos = root_pos;
+            outcomes.push(pos.outcome());
             for uci in body.moves {
                 let m = uci.to_move(&pos)?;
                 moves.push(m.to_uci(CastlingMode::Chess960));
                 pos.play_unchecked(m);
+                outcomes.push(pos.outcome());
             }
-            moves
+            (moves, outcomes)
         };
 
         Ok(IncomingBatch {
@@ -600,6 +604,7 @@ impl IncomingBatch {
                             position_index: Some(PositionIndex(0)),
                             root_fen,
                             moves: body_moves,
+                            outcome: outcomes[outcomes.len() - 1],
                         }],
                     }]
                 }
@@ -620,6 +625,7 @@ impl IncomingBatch {
                         position_index: Some(PositionIndex(0)),
                         root_fen: root_fen.clone(),
                         moves: moves.clone(),
+                        outcome: outcomes[0],
                     });
                     for (i, m) in body_moves.into_iter().enumerate() {
                         let position_index = PositionIndex(i + 1);
@@ -634,6 +640,7 @@ impl IncomingBatch {
                             position_index: Some(position_index),
                             root_fen: root_fen.clone(),
                             moves: moves.clone(),
+                            outcome: outcomes[i + 1],
                         });
                     }
 
