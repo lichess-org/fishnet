@@ -1,6 +1,9 @@
 use std::{
     cmp::{max, min},
-    collections::{HashMap, VecDeque, hash_map::Entry},
+    collections::{
+        HashMap, VecDeque,
+        hash_map::{Entry, OccupiedEntry},
+    },
     error::Error,
     fmt,
     iter::{once, zip},
@@ -246,75 +249,73 @@ impl QueueState {
     }
 
     fn maybe_finished(&mut self, mut queue: QueueStub, batch: BatchId) {
-        if let Some(pending) = self.pending.remove(&batch) {
-            match pending.try_into_completed() {
-                Ok(completed) => {
-                    let mut extra = Vec::new();
-                    extra.extend(short_variant_name(completed.variant).map(|n| n.to_owned()));
-                    if completed.flavor.eval_flavor().is_hce() {
-                        extra.push("hce".to_owned());
-                    }
-                    extra.push(match completed.nps() {
-                        Some(nps) => {
-                            let nnue_nps = if completed.flavor.eval_flavor() == EvalFlavor::Nnue {
-                                Some(nps)
-                            } else {
-                                None
-                            };
-                            self.stats_recorder.record_batch(
-                                completed.total_positions(),
-                                completed.total_nodes,
-                                nnue_nps,
-                            );
-                            format!("{} knps/core", nps / 1000)
-                        }
-                        None => "? nps".to_owned(),
-                    });
-                    let log = match completed.url {
-                        Some(ref url) => format!(
-                            "{} {} finished ({})",
-                            self.status_bar(),
-                            url,
-                            extra.join(", ")
-                        ),
-                        None => format!(
-                            "{} batch {} finished ({})",
-                            self.status_bar(),
-                            batch,
-                            extra.join(", ")
-                        ),
-                    };
-                    match completed.work {
-                        Work::Analysis { id, .. } => {
-                            self.logger.info(&log);
-                            queue.api.submit_analysis(
-                                id,
-                                completed.flavor,
-                                completed.into_analysis(),
-                            );
-                        }
-                        Work::Move { id, .. } => {
-                            self.logger.debug(&log);
-                            self.move_submissions.push_back(MoveSubmission {
-                                batch_id: id,
-                                best_move: completed.into_best_move(),
-                            });
-                            queue.move_submitted();
-                        }
-                    }
-                }
-                Err(mut pending) => {
-                    if let Some(progress_report) = pending.debounced_progress_report() {
-                        // Send partial analysis as progress report.
-                        queue.api.submit_analysis(
-                            pending.work.id(),
-                            pending.flavor,
-                            progress_report,
-                        );
-                    }
+        let Entry::Occupied(entry) = self.pending.entry(batch) else {
+            return;
+        };
 
-                    self.pending.insert(pending.work.id(), pending);
+        let completed = match PendingBatch::try_complete(entry) {
+            Ok(completed) => completed,
+            Err(mut entry) => {
+                let pending = entry.get_mut();
+                if let Some(progress_report) = pending.debounced_progress_report() {
+                    // Send partial analysis as progress report.
+                    queue
+                        .api
+                        .submit_analysis(pending.work.id(), pending.flavor, progress_report);
                 }
+                return;
+            }
+        };
+
+        let mut extra = Vec::new();
+        extra.extend(short_variant_name(completed.variant).map(|n| n.to_owned()));
+        if completed.flavor.eval_flavor().is_hce() {
+            extra.push("hce".to_owned());
+        }
+        extra.push(match completed.nps() {
+            Some(nps) => {
+                let nnue_nps = if completed.flavor.eval_flavor() == EvalFlavor::Nnue {
+                    Some(nps)
+                } else {
+                    None
+                };
+                self.stats_recorder.record_batch(
+                    completed.total_positions(),
+                    completed.total_nodes,
+                    nnue_nps,
+                );
+                format!("{} knps/core", nps / 1000)
+            }
+            None => "? nps".to_owned(),
+        });
+        let log = match completed.url {
+            Some(ref url) => format!(
+                "{} {} finished ({})",
+                self.status_bar(),
+                url,
+                extra.join(", ")
+            ),
+            None => format!(
+                "{} batch {} finished ({})",
+                self.status_bar(),
+                batch,
+                extra.join(", ")
+            ),
+        };
+        match completed.work {
+            Work::Analysis { id, .. } => {
+                self.logger.info(&log);
+                queue
+                    .api
+                    .submit_analysis(id, completed.flavor, completed.into_analysis());
+            }
+            Work::Move { id, .. } => {
+                self.logger.debug(&log);
+                self.move_submissions.push_back(MoveSubmission {
+                    batch_id: id,
+                    best_move: completed.into_best_move(),
+                });
+                queue.move_submitted();
             }
         }
     }
@@ -773,20 +774,26 @@ struct PendingBatch {
 }
 
 impl PendingBatch {
-    #[allow(clippy::result_large_err)]
-    fn try_into_completed(self) -> Result<CompletedBatch, PendingBatch> {
-        match self.positions.clone().into_iter().collect() {
-            Some(positions) => Ok(CompletedBatch {
-                work: self.work,
-                url: self.url,
-                flavor: self.flavor,
-                variant: self.variant,
-                positions,
-                total_nodes: self.total_nodes,
-                total_cpu_time: self.total_cpu_time,
-            }),
-            None => Err(self),
+    fn try_complete(
+        entry: OccupiedEntry<'_, BatchId, PendingBatch>,
+    ) -> Result<CompletedBatch, OccupiedEntry<'_, BatchId, PendingBatch>> {
+        if entry.get().positions.iter().any(Option::is_none) {
+            return Err(entry);
         }
+        let pending = entry.remove();
+        Ok(CompletedBatch {
+            positions: pending
+                .positions
+                .into_iter()
+                .map(|p| p.expect("all positions present"))
+                .collect(),
+            work: pending.work,
+            url: pending.url,
+            flavor: pending.flavor,
+            variant: pending.variant,
+            total_nodes: pending.total_nodes,
+            total_cpu_time: pending.total_cpu_time,
+        })
     }
 
     fn debounced_progress_report(&mut self) -> Option<Vec<Option<AnalysisPart>>> {
