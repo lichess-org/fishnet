@@ -2,13 +2,13 @@ use std::{error::Error, fmt, fmt::Write, num::NonZeroU8, str::FromStr, time::Dur
 
 use arrayvec::ArrayString;
 use reqwest::{Client, StatusCode};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, Serializer, ser::SerializeMap as _};
 use serde_repr::Deserialize_repr as DeserializeRepr;
 use serde_with::{
     DisplayFromStr, DurationMilliSeconds, DurationSeconds, NoneAsEmptyString, StringWithSeparator,
     formats::SpaceSeparator, serde_as,
 };
-use shakmaty::{fen::Fen, uci::UciMove, variant::Variant};
+use shakmaty::{Color, KnownOutcome, fen::Fen, uci::UciMove, variant::Variant};
 use tokio::{
     sync::{mpsc, oneshot},
     time::sleep,
@@ -370,35 +370,47 @@ pub enum AnalysisPart {
     },
 }
 
-#[derive(Debug, Serialize, Copy, Clone)]
+/// Score from the point of view of the side to move.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum Score {
-    #[serde(rename = "cp")]
     Cp(i64),
-    #[serde(rename = "mate")]
     Mate(i64),
+    MateGiven,
 }
 
 impl Score {
+    pub fn from_outcome(outcome: KnownOutcome, turn: Color) -> Score {
+        match outcome {
+            KnownOutcome::Decisive { winner } if winner == turn => Score::MateGiven,
+            KnownOutcome::Decisive { .. } => Score::Mate(0),
+            KnownOutcome::Draw => Score::Cp(0),
+        }
+    }
+
     pub fn is_plausible(self) -> bool {
         match self {
-            Score::Cp(_) => true,
+            Score::Cp(_) | Score::MateGiven => true,
             Score::Mate(mate) => mate.unsigned_abs() <= 246, // Stockfish MAX_PLY
         }
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::Score;
-
-    #[test]
-    fn score_plausibility_boundaries() {
-        assert!(Score::Cp(i64::MIN).is_plausible());
-        assert!(Score::Mate(-246).is_plausible());
-        assert!(Score::Mate(246).is_plausible());
-        assert!(!Score::Mate(-247).is_plausible());
-        assert!(!Score::Mate(247).is_plausible());
-        assert!(!Score::Mate(i64::MIN).is_plausible());
+impl Serialize for Score {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let mut map = serializer.serialize_map(None)?;
+        match *self {
+            Score::Cp(cp) => map.serialize_entry("cp", &cp)?,
+            Score::Mate(0) => {
+                map.serialize_entry("mate", &0)?;
+                map.serialize_entry("mateGiven", &false)?;
+            }
+            Score::MateGiven => {
+                map.serialize_entry("mate", &0)?;
+                map.serialize_entry("mateGiven", &true)?;
+            }
+            Score::Mate(mate) => map.serialize_entry("mate", &mate)?,
+        }
+        map.end()
     }
 }
 
@@ -766,4 +778,28 @@ fn error_report(mut err: &dyn Error) -> String {
         err = src;
     }
     report
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Score;
+
+    #[test]
+    fn score_plausibility_boundaries() {
+        assert!(Score::Cp(i64::MIN).is_plausible());
+        assert!(Score::Mate(-246).is_plausible());
+        assert!(Score::Mate(246).is_plausible());
+        assert!(!Score::Mate(-247).is_plausible());
+        assert!(!Score::Mate(247).is_plausible());
+        assert!(!Score::Mate(i64::MIN).is_plausible());
+    }
+
+    #[test]
+    fn score_serialization() {
+        let json = |score: Score| serde_json::to_string(&score).unwrap();
+        assert_eq!(json(Score::Cp(-24)), r#"{"cp":-24}"#);
+        assert_eq!(json(Score::Mate(-3)), r#"{"mate":-3}"#);
+        assert_eq!(json(Score::Mate(0)), r#"{"mate":0,"mateGiven":false}"#);
+        assert_eq!(json(Score::MateGiven), r#"{"mate":0,"mateGiven":true}"#);
+    }
 }

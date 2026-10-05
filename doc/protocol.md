@@ -2,6 +2,8 @@
 
 ![Fishnet sequence diagram](https://raw.githubusercontent.com/lichess-org/fishnet/master/doc/sequence-diagram.png)
 
+## Acquire work
+
 Client asks server:
 
 ```
@@ -13,6 +15,11 @@ Authorization: Bearer <key>
 ```javascript
 {}
 ```
+
+Query parameters:
+
+- `?slow=true`: Do not acquire user requested analysis. Speed is not important
+  for system requested analysis.
 
 Response with work:
 
@@ -55,6 +62,31 @@ Response with no work found:
 ```
 204 No Content
 ```
+
+## Submit work
+
+Submitting work may immediately acquire more work. Query parameters:
+
+- `?slow=true`: Do not acquire user requested analysis. Speed is not important
+  for system requested analysis.
+- `?stop=true`: Submit result. Do not acquire next job.
+
+Accepted:
+
+```
+204 No content
+```
+
+Accepted, with next job:
+
+```
+202 Accepted
+```
+```
+[...]
+```
+
+### Submit work (analysis)
 
 Client runs Stockfish and sends the analysis to server.
 The client can optionally report progress to the server, by sending null for
@@ -107,7 +139,15 @@ Authorization: Bearer <key>
 }
 ```
 
-Or the move:
+Signed `mate` and `cp` values are given from the point of view of the side to
+move. `{"mate": 0}` is a special case:
+
+* `{"mate": 0, "mateGiven": false}`: The side to move has lost (by checkmate
+  or variant ending).
+* `{"mate": 0, "mateGiven": true}`: The side to move has won by variant
+  ending (e.g., antichess).
+
+### Submit work (move)
 
 ```
 POST https://lichess.org/fishnet/move/{work_id}
@@ -123,31 +163,10 @@ Authorization: Bearer <key>
 }
 ```
 
-Query parameters:
-
-- `?slow=true`: Do not acquire user requested analysis. Speed is not important
-  for system requested analysis.
-- `?stop=true`: Submit result. Do not acquire next job.
-
-Accepted:
-
-```
-204 No content
-```
-
-Accepted, with next job:
-
-```
-202 Accepted
-```
-```
-[...]
-```
-
-## Aborting jobs
+## Abort work
 
 The client should send a request like the following, when shutting down instead
-of completing an analysis. The server can then immediately give the job to
+of completing an analysis. The server can then immediately give the work to
 another client.
 
 ```

@@ -1,6 +1,6 @@
 use std::{num::NonZeroU8, time::Duration};
 
-use shakmaty::{fen::Fen, uci::UciMove, variant::Variant};
+use shakmaty::{Color, Outcome, fen::Fen, uci::UciMove, variant::Variant};
 use tokio::{sync::oneshot, time::Instant};
 use url::Url;
 
@@ -32,6 +32,14 @@ pub struct Position {
 
     pub root_fen: Fen,
     pub moves: Vec<UciMove>,
+
+    pub outcome: Outcome,
+}
+
+impl Position {
+    pub fn turn(&self) -> Color {
+        self.root_fen.as_setup().turn ^ (self.moves.len() % 2 == 1)
+    }
 }
 
 #[derive(Debug, Clone)]

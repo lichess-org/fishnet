@@ -301,6 +301,31 @@ impl StockfishActor {
         eval_flavor: EvalFlavor,
         position: Position,
     ) -> io::Result<PositionResponse> {
+        // The game is over. Engines would only report a depth 0 score, where
+        // mate 0 is ambiguous.
+        if let Some(outcome) = position.outcome.known()
+            && position.work.is_analysis()
+        {
+            let mut scores = Matrix::new();
+            scores.set(
+                NonZeroU8::MIN,
+                0,
+                Score::from_outcome(outcome, position.turn()),
+            );
+            return Ok(PositionResponse {
+                work: position.work,
+                position_index: position.position_index,
+                url: position.url,
+                best_move: None,
+                scores,
+                depth: 0,
+                pvs: Matrix::new(),
+                time: Duration::default(),
+                nodes: 0,
+                nps: None,
+            });
+        }
+
         // Setup position.
         let moves = position
             .moves
