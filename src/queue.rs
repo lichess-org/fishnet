@@ -1,6 +1,9 @@
 use std::{
     cmp::{max, min},
-    collections::{HashMap, VecDeque, hash_map::Entry},
+    collections::{
+        HashMap, VecDeque,
+        hash_map::{Entry, OccupiedEntry},
+    },
     error::Error,
     fmt,
     iter::{once, zip},
@@ -246,26 +249,23 @@ impl QueueState {
     }
 
     fn maybe_finished(&mut self, mut queue: QueueStub, batch: BatchId) {
-        let Some(pending) = self.pending.get_mut(&batch) else {
+        let Entry::Occupied(entry) = self.pending.entry(batch) else {
             return;
         };
 
-        if !pending.is_complete() {
-            if let Some(progress_report) = pending.debounced_progress_report() {
-                queue.api.submit_analysis(
-                    pending.work.id(),
-                    pending.flavor,
-                    progress_report,
-                );
+        let completed = match PendingBatch::try_complete(entry) {
+            Ok(completed) => completed,
+            Err(mut entry) => {
+                let pending = entry.get_mut();
+                if let Some(progress_report) = pending.debounced_progress_report() {
+                    // Send partial analysis as progress report.
+                    queue
+                        .api
+                        .submit_analysis(pending.work.id(), pending.flavor, progress_report);
+                }
+                return;
             }
-            return;
-        }
-
-        let completed = self
-            .pending
-            .remove(&batch)
-            .expect("checked above")
-            .into_completed();
+        };
 
         let mut extra = Vec::new();
         extra.extend(short_variant_name(completed.variant).map(|n| n.to_owned()));
@@ -305,11 +305,9 @@ impl QueueState {
         match completed.work {
             Work::Analysis { id, .. } => {
                 self.logger.info(&log);
-                queue.api.submit_analysis(
-                    id,
-                    completed.flavor,
-                    completed.into_analysis(),
-                );
+                queue
+                    .api
+                    .submit_analysis(id, completed.flavor, completed.into_analysis());
             }
             Work::Move { id, .. } => {
                 self.logger.debug(&log);
@@ -776,20 +774,26 @@ struct PendingBatch {
 }
 
 impl PendingBatch {
-    fn is_complete(&self) -> bool {
-        self.positions.iter().all(Option::is_some)
-    }
-
-    fn into_completed(self) -> CompletedBatch {
-        CompletedBatch {
-            positions: self.positions.into_iter().flatten().collect(),
-            work: self.work,
-            url: self.url,
-            flavor: self.flavor,
-            variant: self.variant,
-            total_nodes: self.total_nodes,
-            total_cpu_time: self.total_cpu_time,
+    fn try_complete(
+        entry: OccupiedEntry<'_, BatchId, PendingBatch>,
+    ) -> Result<CompletedBatch, OccupiedEntry<'_, BatchId, PendingBatch>> {
+        if entry.get().positions.iter().any(Option::is_none) {
+            return Err(entry);
         }
+        let pending = entry.remove();
+        Ok(CompletedBatch {
+            positions: pending
+                .positions
+                .into_iter()
+                .map(|p| p.expect("all positions present"))
+                .collect(),
+            work: pending.work,
+            url: pending.url,
+            flavor: pending.flavor,
+            variant: pending.variant,
+            total_nodes: pending.total_nodes,
+            total_cpu_time: pending.total_cpu_time,
+        })
     }
 
     fn debounced_progress_report(&mut self) -> Option<Vec<Option<AnalysisPart>>> {
