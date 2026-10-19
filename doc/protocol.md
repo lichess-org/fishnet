@@ -102,7 +102,7 @@ Authorization: Bearer <key>
 {
   "stockfish": {
     "flavor": "nnue", // or classical
-    "version": "Stockfish 19" // or for example "Fairy-Stockfish dev-20251006-a8092108"
+    "version": "OfficialStockfish/Stockfish 19/abcdef12"
   },
   "analysis": [
     { // first ply
@@ -138,6 +138,13 @@ Authorization: Bearer <key>
   ]
 }
 ```
+
+`stockfish.version` has three fields x/y/z: first is engine family
+(`OfficialStockfish` or `FairyStockfish`), second is the human-readable engine name and
+version, and third is the Git revision (or `nogit`). revision has an `-m` suffix for drity
+sources.
+
+Forward slashes in the second and third fields are replaced with underscores.
 
 Signed `mate` and `cp` values are given from the point of view of the side to
 move. `{"mate": 0}` is a special case:
