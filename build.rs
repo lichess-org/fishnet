@@ -113,7 +113,7 @@ fn engine_version_constant(path: &str, prefix: &str) -> String {
         .to_owned()
 }
 
-fn engine_version_info(flavor: &str, name: &str, version: &str, git: Option<&GitInfo>) -> String {
+fn engine_version_info(family: &str, name: &str, version: &str, git: Option<&GitInfo>) -> String {
     let version = match (version, git) {
         ("dev" | "", Some(git)) => format!("{name} dev-{}", git.date),
         ("dev" | "", None) => format!("{name} dev"),
@@ -128,7 +128,7 @@ fn engine_version_info(flavor: &str, name: &str, version: &str, git: Option<&Git
         }
     }
     .replace('/', "_");
-    format!("{flavor}/{version}/{revision}")
+    format!("{family}/{version}/{revision}")
 }
 
 struct GitInfo {

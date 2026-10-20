@@ -102,7 +102,7 @@ Authorization: Bearer <key>
 {
   "stockfish": {
     "flavor": "nnue", // or classical
-    "version": "OfficialStockfish/Stockfish 19/abcdef12"
+    "version": "OfficialStockfish/Stockfish 19/edb0d9db" // or for example "FairyStockfish/Fairy-Stockfish dev-20251006/a8092108"
   },
   "analysis": [
     { // first ply
@@ -139,10 +139,12 @@ Authorization: Bearer <key>
 }
 ```
 
-`stockfish.version` has three fields x/y/z: first is engine family
-(`OfficialStockfish` or `FairyStockfish`), second is the human-readable engine name and
-version, and third is the Git revision (or `nogit`). revision has an `-m` suffix for drity
-sources.
+`stockfish.version` has the form `<family>/<name>/<revision>`:
+
+* `<family>` is the engine family, `OfficialStockfish` or `FairyStockfish`.
+* `<name>` is the human-readable engine name and version.
+* `<revision>` is the Git revision (or `nogit`), with an `-m` suffix for dirty
+  sources.
 
 Forward slashes in the second and third fields are replaced with underscores.
 
