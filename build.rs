@@ -62,11 +62,10 @@ fn main() {
         env::var("TARGET").unwrap()
     );
 
-    // Engine versions, mirroring the way official Stockfish would report its
-    // own version.
     println!(
         "cargo:rustc-env=OFFICIAL_STOCKFISH_VERSION={}",
         engine_version_info(
+            "OfficialStockfish",
             "Stockfish",
             &engine_version_constant(
                 "Stockfish/src/misc.cpp",
@@ -78,6 +77,7 @@ fn main() {
     println!(
         "cargo:rustc-env=FAIRY_STOCKFISH_VERSION={}",
         engine_version_info(
+            "FairyStockfish",
             "Fairy-Stockfish",
             &engine_version_constant("Fairy-Stockfish/src/misc.cpp", "const string Version = \""),
             FAIRY_STOCKFISH_GIT.as_ref()
@@ -113,20 +113,22 @@ fn engine_version_constant(path: &str, prefix: &str) -> String {
         .to_owned()
 }
 
-fn engine_version_info(name: &str, version: &str, git: Option<&GitInfo>) -> String {
-    match (version, git) {
-        ("dev" | "", Some(git)) => format!(
-            "{name} dev-{}{}-{}",
-            git.date,
-            if git.dirty { "-m" } else { "" },
-            git.sha
-        ),
-        ("dev" | "", None) => {
-            println!("cargo:warning=Could not determine git revision of {name}");
-            format!("{name} dev-nogit")
-        }
+fn engine_version_info(family: &str, name: &str, version: &str, git: Option<&GitInfo>) -> String {
+    let version = match (version, git) {
+        ("dev" | "", Some(git)) => format!("{name} dev-{}", git.date),
+        ("dev" | "", None) => format!("{name} dev"),
         (version, _) => format!("{name} {version}"),
     }
+    .replace('/', "_");
+    let revision = match git {
+        Some(git) => format!("{}{}", git.sha, if git.dirty { "-m" } else { "" }),
+        None => {
+            println!("cargo:warning=Could not determine git revision of {name}");
+            "nogit".to_owned()
+        }
+    }
+    .replace('/', "_");
+    format!("{family}/{version}/{revision}")
 }
 
 struct GitInfo {
