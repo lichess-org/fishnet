@@ -62,7 +62,7 @@ windows = { version = "0.62", features = ["Win32", "Win32_System", "Win32_System
 [build-dependencies]
 glob = "0.3"
 ar = "0.9"
-zstd = { version = "0.13", default-features = false }
+zstd = { version = "0.14", default-features = false }
 
 [target.'cfg(windows)'.build-dependencies]
 winres = "0.1"
