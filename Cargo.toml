@@ -48,7 +48,7 @@ quick-xml = { version = "0.42", features = ["serialize"] }
 semver = "1"
 futures-util = "0.3"
 self-replace = "1"
-zstd = { version = "0.14", default-features = false }
+mzstd = { version = "0.2", default-features = false, features = ["std", "decompression"] }
 
 [target.'cfg(target_arch = "x86_64")'.dependencies]
 raw-cpuid = "11"
@@ -62,7 +62,7 @@ windows = { version = "0.62", features = ["Win32", "Win32_System", "Win32_System
 [build-dependencies]
 glob = "0.3"
 ar = "0.9"
-zstd = { version = "0.14", default-features = false }
+mzstd = { version = "0.2", default-features = false, features = ["std", "compression"] }
 
 [target.'cfg(windows)'.build-dependencies]
 winres = "0.1"

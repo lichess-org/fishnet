@@ -8,9 +8,9 @@ use std::{
 
 use ar::Archive;
 use bitflags::bitflags;
+use mzstd::Decompressor;
 use serde::Serialize;
 use tempfile::TempDir;
-use zstd::stream::read::Decoder as ZstdDecoder;
 
 static ASSETS_AR_ZST: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/assets.ar.zst"));
 
@@ -220,7 +220,8 @@ impl Assets {
         let mut stockfish = ByEngineFlavor::<Option<Stockfish>>::default();
         let dir = tempfile::Builder::new().prefix("fishnet-").tempdir()?;
 
-        let mut archive = Archive::new(ZstdDecoder::new(ASSETS_AR_ZST)?);
+        let mut decompressor = Decompressor::default();
+        let mut archive = Archive::new(decompressor.reader(ASSETS_AR_ZST));
         while let Some(entry) = archive.next_entry() {
             let mut entry = entry?;
             let filename = str::from_utf8(entry.header().identifier()).expect("utf-8 filename");

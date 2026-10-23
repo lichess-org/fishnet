@@ -11,7 +11,7 @@ use std::{
 };
 
 use glob::glob;
-use zstd::stream::write::Encoder as ZstdEncoder;
+use mzstd::{Compressor, EncoderConfig, Level};
 
 static OUT_PATH: LazyLock<PathBuf> = LazyLock::new(|| PathBuf::from(&env::var("OUT_DIR").unwrap()));
 
@@ -86,9 +86,12 @@ fn main() {
 
     // Build Stockfish and Fairy-Stockfish and archive them
     // (along with eval files).
-    let mut archive = ar::Builder::new(
-        ZstdEncoder::new(File::create(OUT_PATH.join("assets.ar.zst")).unwrap(), 6).unwrap(),
-    );
+    let mut compressor =
+        Compressor::new(EncoderConfig::default().with_level(Level::try_from(6).unwrap())).unwrap();
+    let mut archive = ar::Builder::new(compressor.writer(
+        File::create(OUT_PATH.join("assets.ar.zst")).unwrap(),
+        Default::default(),
+    ));
     stockfish_build(&mut archive);
     append_file(
         &mut archive,
