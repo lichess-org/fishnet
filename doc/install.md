@@ -111,65 +111,91 @@ docker compose up -d
 
 ## Kubernetes
 
-Create `fishnet.yaml` as follows and edit `fishnet-private-key`:
+Create `fishnet.yaml` as follows and edit `KEY`, `replicas`, and `limits`:
 
 ```yaml
 apiVersion: v1
 kind: Namespace
 metadata:
   name: fishnet
----
-apiVersion: v1
-kind: Pod
-metadata:
-  name: fishnet-pod
-  namespace: fishnet
-spec:
-  containers:
-    - name: fishnet-pod
-      image: niklasf/fishnet:2
-      imagePullPolicy: Always
-      env:
-        # - name: CORES
-        #   valueFrom:
-        #     configMapKeyRef:
-        #       name: fishnet-config
-        #       key: cores
-        - name: KEY
-          valueFrom:
-            secretKeyRef:
-              name: lichess
-              key: fishnet-private-key
-  restartPolicy: Always
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
 ---
 apiVersion: v1
 kind: Secret
 metadata:
-  name: lichess
+  name: fishnet
   namespace: fishnet
-data:
-  fishnet-private-key: <UPDATE here with your fishnet private key as BASE64 encoded string>
-# ---
-# apiVersion: v1
-# kind: ConfigMap
-# metadata:
-#   name: fishnet-config
-#   namespace: fishnet
-# data:
-#   cores: "4"
+stringData:
+  KEY: abcdef
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fishnet
+  namespace: fishnet
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: fishnet
+  strategy:
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
+  template:
+    metadata:
+      labels:
+        app: fishnet
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: fishnet
+          image: niklasf/fishnet:2
+          imagePullPolicy: Always
+          env:
+            - name: CORES
+              value: all  # Use full limits.cpu
+          envFrom:
+            - secretRef:
+                name: fishnet
+          resources:
+            limits:
+              cpu: "4"
+              memory: 1Gi  # Scale with number of cores (conservatively 256Mi per core)
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
 ```
 
-Uncomment the `configMap` to change the number of cores used.
+Then:
+
+```sh
+kubectl apply -f fishnet.yaml
+```
 
 To view logs:
 
 ```sh
-kubectl logs fishnet-pod -n=fishnet
+kubectl logs deployment/fishnet -n fishnet
 ```
 
-Delete to update, since the image pull policy is set to `Always`:
+To update, since the image pull policy is set to `Always`:
 
 ```sh
-kubectl delete pod fishnet-pod -n=fishnet
-kubectl apply -f fishnet.yaml
+kubectl rollout restart deployment/fishnet -n fishnet
 ```
