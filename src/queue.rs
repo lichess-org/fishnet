@@ -545,6 +545,31 @@ pub struct IncomingBatch {
     url: Option<Url>,
 }
 
+fn is_extreme_branching(pos: &VariantPosition) -> bool {
+    // Crazyhouse allows legal piece drops from the hand, which can legitimately
+    // increase the number of legal moves without causing combinatorial search explosion.
+    if matches!(pos, VariantPosition::Crazyhouse(_)) {
+        return false;
+    }
+
+    let moves = pos.legal_moves();
+    if moves.len() >= 100 {
+        return true;
+    }
+
+    let mut perft2 = 0;
+    for m in &moves {
+        let mut child = pos.clone();
+        child.play_unchecked(*m);
+        perft2 += child.legal_moves().len();
+        if perft2 >= 2500 {
+            return true;
+        }
+    }
+
+    false
+}
+
 impl IncomingBatch {
     #[allow(clippy::result_large_err)]
     fn from_acquired(
@@ -561,6 +586,8 @@ impl IncomingBatch {
         .or_else(PositionError::ignore_invalid_ep_square)
         .or_else(PositionError::ignore_invalid_castling_rights);
 
+        let has_too_much_material = maybe_root_pos.is_err();
+
         let (flavor, root_pos) = match maybe_root_pos {
             Ok(pos @ VariantPosition::Chess(_)) if body.work.is_analysis() => {
                 (EngineFlavor::Official, pos)
@@ -572,18 +599,26 @@ impl IncomingBatch {
         let root_fen = Fen::from_position(&root_pos, EnPassantMode::Legal);
 
         // Also collect outcomes of all positions, including the root.
-        let (body_moves, outcomes) = {
+        let (body_moves, outcomes, extreme_positions) = {
             let mut moves = Vec::with_capacity(body.moves.len());
             let mut outcomes = Vec::with_capacity(body.moves.len() + 1);
+            let mut extreme = Vec::with_capacity(body.moves.len() + 1);
             let mut pos = root_pos;
             outcomes.push(pos.outcome());
+            extreme.push(
+                body.work.is_analysis() && (has_too_much_material || is_extreme_branching(&pos)),
+            );
             for uci in body.moves {
                 let m = uci.to_move(&pos)?;
                 moves.push(m.to_uci(CastlingMode::Chess960));
                 pos.play_unchecked(m);
                 outcomes.push(pos.outcome());
+                extreme.push(
+                    body.work.is_analysis()
+                        && (has_too_much_material || is_extreme_branching(&pos)),
+                );
             }
-            (moves, outcomes)
+            (moves, outcomes, extreme)
         };
 
         Ok(IncomingBatch {
@@ -622,7 +657,8 @@ impl IncomingBatch {
                             url.set_fragment(Some("0"));
                             url
                         }),
-                        skip: body.skip_positions.contains(&PositionIndex(0)),
+                        skip: body.skip_positions.contains(&PositionIndex(0))
+                            || extreme_positions[0],
                         position_index: Some(PositionIndex(0)),
                         root_fen: root_fen.clone(),
                         moves: moves.clone(),
@@ -637,7 +673,8 @@ impl IncomingBatch {
                                 url.set_fragment(Some(&position_index.0.to_string()));
                                 url
                             }),
-                            skip: body.skip_positions.contains(&position_index),
+                            skip: body.skip_positions.contains(&position_index)
+                                || extreme_positions[i + 1],
                             position_index: Some(position_index),
                             root_fen: root_fen.clone(),
                             moves: moves.clone(),
@@ -680,7 +717,7 @@ impl IncomingBatch {
                         for (prev, current) in prev_and_current_chunked {
                             if !current.skip {
                                 if let Some(prev) = prev
-                                    && (prev.skip || chunk_positions.is_empty())
+                                    && (!prev.skip && chunk_positions.is_empty())
                                 {
                                     chunk_positions.push(prev.clone());
                                 }
@@ -873,5 +910,144 @@ impl CompletedBatch {
         (u128::from(self.total_nodes) * 1000)
             .checked_div(self.total_cpu_time.as_millis())
             .and_then(|nps| nps.try_into().ok())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_is_extreme_branching() {
+        use shakmaty::{
+            CastlingMode,
+            fen::Fen,
+            variant::{Variant, VariantPosition},
+        };
+
+        // Issue #296 FEN
+        let fen: Fen = "8/PPPPPPPP/nr4RN/qb4BQ/kb4BK/nr4RN/pppppppp/8 w - - 0 1"
+            .parse()
+            .unwrap();
+        let pos =
+            VariantPosition::from_setup(Variant::Chess, fen.into_setup(), CastlingMode::Chess960)
+                .unwrap();
+        assert!(is_extreme_branching(&pos));
+
+        // Standard starting position
+        let standard: Fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
+            .parse()
+            .unwrap();
+        let pos = VariantPosition::from_setup(
+            Variant::Chess,
+            standard.into_setup(),
+            CastlingMode::Chess960,
+        )
+        .unwrap();
+        assert!(!is_extreme_branching(&pos));
+
+        // Horde starting position
+        let horde: Fen =
+            "rnbqkbnr/pppppppp/8/1PP2PP1/PPPPPPPP/PPPPPPPP/PPPPPPPP/PPPPPPPP w kq - 0 1"
+                .parse()
+                .unwrap();
+        let pos =
+            VariantPosition::from_setup(Variant::Horde, horde.into_setup(), CastlingMode::Chess960)
+                .unwrap();
+        assert!(!is_extreme_branching(&pos));
+    }
+
+    #[test]
+    fn test_extreme_branching_all_skipped() {
+        let json = r#"{
+            "work": {
+                "type": "analysis",
+                "id": "eCenM6ln",
+                "nodes": {
+                    "classical": 2250000,
+                    "sf16": 2250000
+                },
+                "timeout": 6000
+            },
+            "game_id": "eCenM6ln",
+            "position": "8/PPPPPPPP/nr4RN/qb4BQ/kb4BK/nr4RN/pppppppp/8 w - - 0 1",
+            "variant": "fromPosition",
+            "moves": ""
+        }"#;
+
+        let body: AcquireResponseBody = serde_json::from_str(json).unwrap();
+        let endpoint = Endpoint::default();
+        let res = IncomingBatch::from_acquired(&endpoint, body);
+        match res {
+            Err(IncomingError::AllSkipped(completed)) => {
+                assert_eq!(completed.positions.len(), 1);
+                assert!(matches!(completed.positions[0], Skip::Skip));
+            }
+            _ => panic!("Expected AllSkipped, got {:?}", res),
+        }
+    }
+
+    #[test]
+    fn test_too_much_material_all_skipped() {
+        let json = r#"{
+            "work": {
+                "type": "analysis",
+                "id": "L0yJm4oL",
+                "nodes": {
+                    "classical": 2250000,
+                    "sf16": 2250000
+                },
+                "timeout": 6000
+            },
+            "game_id": "L0yJm4oL",
+            "position": "qqqkqqqq/qqqqqqqq/qqqqqqqq/qqqqqqqq/QQQQQQQQ/QQQQQQQQ/QQQQQQQQ/QQQKQQQQ w - - 0 1",
+            "variant": "fromPosition",
+            "moves": ""
+        }"#;
+
+        let body: AcquireResponseBody = serde_json::from_str(json).unwrap();
+        let endpoint = Endpoint::default();
+        let res = IncomingBatch::from_acquired(&endpoint, body);
+        match res {
+            Err(IncomingError::AllSkipped(completed)) => {
+                assert_eq!(completed.positions.len(), 1);
+                assert!(matches!(completed.positions[0], Skip::Skip));
+            }
+            _ => panic!("Expected AllSkipped, got {:?}", res),
+        }
+    }
+
+    #[test]
+    fn test_normal_batch_not_skipped() {
+        let json = r#"{
+            "work": {
+                "type": "analysis",
+                "id": "normal-game",
+                "nodes": {
+                    "classical": 2250000,
+                    "sf16": 2250000
+                },
+                "timeout": 6000
+            },
+            "game_id": "normal-game",
+            "position": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+            "variant": "standard",
+            "moves": "e2e4 e7e5"
+        }"#;
+
+        let body: AcquireResponseBody = serde_json::from_str(json).unwrap();
+        let endpoint = Endpoint::default();
+        let res = IncomingBatch::from_acquired(&endpoint, body);
+        match res {
+            Ok(incoming) => {
+                assert!(!incoming.chunks.is_empty());
+                for chunk in incoming.chunks {
+                    for pos in chunk.positions {
+                        assert!(!pos.skip);
+                    }
+                }
+            }
+            _ => panic!("Expected Ok, got {:?}", res),
+        }
     }
 }
