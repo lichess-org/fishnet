@@ -545,11 +545,22 @@ pub struct IncomingBatch {
     url: Option<Url>,
 }
 
+/// Detects positions that cause combinatorial search explosions or engine timeouts (#296).
+///
+/// Handles:
+/// 1. Extreme branching: >= 100 legal moves at depth 1, or perft(2) >= 2500 (e.g. 16 pawns
+///    on ranks 7 and 2 ready to promote). Crazyhouse drop moves are excluded.
+/// 2. Excessive piece count: packed 50+ queen boards (e.g. L0yJm4oL) choke search at deeper
+///    plies, but escape branching factor checks at ply 0 because pieces block each other
+///    (moves = 22, perft(2) ~ 660). Rejecting standard chess boards with > 32 pieces catches
+///    these without rejecting legitimate non-standard material (<= 32 pieces) or Horde (52 pieces).
 fn is_extreme_branching(pos: &VariantPosition) -> bool {
-    // Crazyhouse allows legal piece drops from the hand, which can legitimately
-    // increase the number of legal moves without causing combinatorial search explosion.
     if matches!(pos, VariantPosition::Crazyhouse(_)) {
         return false;
+    }
+
+    if matches!(pos, VariantPosition::Chess(_)) && pos.board().occupied().count() > 32 {
+        return true;
     }
 
     let moves = pos.legal_moves();
@@ -558,16 +569,12 @@ fn is_extreme_branching(pos: &VariantPosition) -> bool {
     }
 
     let mut perft2 = 0;
-    for m in &moves {
+    moves.iter().any(|m| {
         let mut child = pos.clone();
         child.play_unchecked(*m);
         perft2 += child.legal_moves().len();
-        if perft2 >= 2500 {
-            return true;
-        }
-    }
-
-    false
+        perft2 >= 2500
+    })
 }
 
 impl IncomingBatch {
@@ -578,17 +585,14 @@ impl IncomingBatch {
     ) -> Result<IncomingBatch, IncomingError> {
         let url = body.batch_url(endpoint);
 
-        let maybe_root_pos = VariantPosition::from_setup(
+        let (flavor, root_pos) = match VariantPosition::from_setup(
             body.variant,
             body.position.into_setup(),
             CastlingMode::Chess960,
         )
         .or_else(PositionError::ignore_invalid_ep_square)
-        .or_else(PositionError::ignore_invalid_castling_rights);
-
-        let has_too_much_material = maybe_root_pos.is_err();
-
-        let (flavor, root_pos) = match maybe_root_pos {
+        .or_else(PositionError::ignore_invalid_castling_rights)
+        {
             Ok(pos @ VariantPosition::Chess(_)) if body.work.is_analysis() => {
                 (EngineFlavor::Official, pos)
             }
@@ -605,18 +609,13 @@ impl IncomingBatch {
             let mut extreme = Vec::with_capacity(body.moves.len() + 1);
             let mut pos = root_pos;
             outcomes.push(pos.outcome());
-            extreme.push(
-                body.work.is_analysis() && (has_too_much_material || is_extreme_branching(&pos)),
-            );
+            extreme.push(body.work.is_analysis() && is_extreme_branching(&pos));
             for uci in body.moves {
                 let m = uci.to_move(&pos)?;
                 moves.push(m.to_uci(CastlingMode::Chess960));
                 pos.play_unchecked(m);
                 outcomes.push(pos.outcome());
-                extreme.push(
-                    body.work.is_analysis()
-                        && (has_too_much_material || is_extreme_branching(&pos)),
-                );
+                extreme.push(body.work.is_analysis() && is_extreme_branching(&pos));
             }
             (moves, outcomes, extreme)
         };
@@ -946,7 +945,7 @@ mod tests {
         .unwrap();
         assert!(!is_extreme_branching(&pos));
 
-        // Horde starting position
+        // Horde starting position (52 pieces)
         let horde: Fen =
             "rnbqkbnr/pppppppp/8/1PP2PP1/PPPPPPPP/PPPPPPPP/PPPPPPPP/PPPPPPPP w kq - 0 1"
                 .parse()
@@ -954,6 +953,33 @@ mod tests {
         let pos =
             VariantPosition::from_setup(Variant::Horde, horde.into_setup(), CastlingMode::Chess960)
                 .unwrap();
+        assert!(!is_extreme_branching(&pos));
+
+        // Excessive material (62 queens)
+        let sixty_two_queens: Fen =
+            "qqqkqqqq/qqqqqqqq/qqqqqqqq/qqqqqqqq/QQQQQQQQ/QQQQQQQQ/QQQQQQQQ/QQQKQQQQ w - - 0 1"
+                .parse()
+                .unwrap();
+        let pos = VariantPosition::from_setup(
+            Variant::Chess,
+            sixty_two_queens.into_setup(),
+            CastlingMode::Chess960,
+        )
+        .or_else(PositionError::ignore_too_much_material)
+        .unwrap();
+        assert!(is_extreme_branching(&pos));
+
+        // Legitimate non-standard material (e.g. 2 queens, 8 pawns)
+        let two_queens: Fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNQQKBNR w KQkq - 0 1"
+            .parse()
+            .unwrap();
+        let pos = VariantPosition::from_setup(
+            Variant::Chess,
+            two_queens.into_setup(),
+            CastlingMode::Chess960,
+        )
+        .or_else(PositionError::ignore_too_much_material)
+        .unwrap();
         assert!(!is_extreme_branching(&pos));
     }
 
@@ -1040,6 +1066,41 @@ mod tests {
         let res = IncomingBatch::from_acquired(&endpoint, body);
         match res {
             Ok(incoming) => {
+                assert!(!incoming.chunks.is_empty());
+                for chunk in incoming.chunks {
+                    for pos in chunk.positions {
+                        assert!(!pos.skip);
+                    }
+                }
+            }
+            _ => panic!("Expected Ok, got {:?}", res),
+        }
+    }
+
+    #[test]
+    fn test_non_standard_material_batch_not_skipped() {
+        let json = r#"{
+            "work": {
+                "type": "analysis",
+                "id": "two-queens-game",
+                "nodes": {
+                    "classical": 2250000,
+                    "sf16": 2250000
+                },
+                "timeout": 6000
+            },
+            "game_id": "two-queens-game",
+            "position": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNQQKBNR w KQkq - 0 1",
+            "variant": "fromPosition",
+            "moves": "e2e4 e7e5"
+        }"#;
+
+        let body: AcquireResponseBody = serde_json::from_str(json).unwrap();
+        let endpoint = Endpoint::default();
+        let res = IncomingBatch::from_acquired(&endpoint, body);
+        match res {
+            Ok(incoming) => {
+                assert_eq!(incoming.flavor, EngineFlavor::MultiVariant);
                 assert!(!incoming.chunks.is_empty());
                 for chunk in incoming.chunks {
                     for pos in chunk.positions {
