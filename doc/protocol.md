@@ -200,14 +200,19 @@ Or abort not supported:
 404 Not found
 ```
 
-## General response codes
+## Error responses
 
-For any of these, the client will stop until update or reconfiguration:
+The client stops on these error responses to `/fishnet/acquire` requests,
+if they carry an `{"error": "..."}` body:
 
-- 400 Bad Request (Update required due to protocol change)
-- 401 Unauthorized (Unknown key)
-- 403 Forbidden (Key disabled)
-- 406 Not Acceptable (Update required)
+- 400 Bad Request (Protocol mismatch)
+- 401 Unauthorized (Unknown or disabled key, or update required)
+- 403 Forbidden (Disabled key, or update required)
+- 422 Unprocessable Content (Protocol mismatch)
+
+Without that body, or on 429 Too Many Requests or 403 Forbidden from any
+endpoint, requests are suspended for at least 60 seconds. Other errors
+cause a shorter randomized backoff.
 
 ## Status
 

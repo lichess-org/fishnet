@@ -192,7 +192,7 @@ async fn run(opt: Opt, client: &Client, logger: &Logger) {
                         .fishnet_info(&format!("Fishnet updated to v{version}. Will restart soon"));
                     restart = Some(current_exe);
                     shutdown_soon = true;
-                    queue.shutdown_soon().await;
+                    queue.shutdown_soon();
                 }
             }
         }
@@ -222,7 +222,7 @@ async fn run(opt: Opt, client: &Client, logger: &Logger) {
                     rx.close();
                 } else {
                     logger.headline(&format!("Stopping soon. {to_stop} again to abort pending batches ..."));
-                    queue.shutdown_soon().await;
+                    queue.shutdown_soon();
                     shutdown_soon = true;
                 }
             }

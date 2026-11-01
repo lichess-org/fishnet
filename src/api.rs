@@ -13,6 +13,7 @@ use tokio::{
     sync::{mpsc, oneshot},
     time::sleep,
 };
+use tokio_util::sync::CancellationToken;
 use url::Url;
 
 use crate::{
@@ -30,12 +31,14 @@ pub fn channel(
     logger: Logger,
 ) -> (ApiStub, ApiActor) {
     let (tx, rx) = mpsc::unbounded_channel();
+    let shutdown = CancellationToken::new();
     (
         ApiStub {
             tx,
+            shutdown: shutdown.clone(),
             endpoint: endpoint.clone(),
         },
-        ApiActor::new(rx, endpoint, key, client, logger),
+        ApiActor::new(rx, shutdown, endpoint, key, client, logger),
     )
 }
 
@@ -70,6 +73,11 @@ enum ApiMessage {
         best_move: Option<UciMove>,
         callback: oneshot::Sender<Acquired>,
     },
+}
+
+#[derive(Debug, Deserialize)]
+struct ErrorResponseBody {
+    error: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -423,12 +431,17 @@ struct SubmitQuery {
 #[derive(Debug, Clone)]
 pub struct ApiStub {
     tx: mpsc::UnboundedSender<ApiMessage>,
+    shutdown: CancellationToken,
     endpoint: Endpoint,
 }
 
 impl ApiStub {
     pub fn endpoint(&self) -> &Endpoint {
         &self.endpoint
+    }
+
+    pub fn shutdown(&mut self) {
+        self.shutdown.cancel();
     }
 
     pub async fn check_key(&mut self) -> Option<Result<(), KeyError>> {
@@ -498,6 +511,8 @@ impl ApiStub {
 
 pub struct ApiActor {
     rx: mpsc::UnboundedReceiver<ApiMessage>,
+    shutdown: CancellationToken,
+    drop_requests: bool, // Shutdown requested while requests are suspended
     endpoint: Endpoint,
     key: Option<Key>,
     client: Client,
@@ -508,6 +523,7 @@ pub struct ApiActor {
 impl ApiActor {
     fn new(
         rx: mpsc::UnboundedReceiver<ApiMessage>,
+        shutdown: CancellationToken,
         endpoint: Endpoint,
         key: Option<Key>,
         client: Client,
@@ -515,6 +531,8 @@ impl ApiActor {
     ) -> ApiActor {
         ApiActor {
             rx,
+            shutdown,
+            drop_requests: false,
             endpoint,
             client,
             key,
@@ -526,32 +544,50 @@ impl ApiActor {
     pub async fn run(mut self) {
         self.logger.debug("Api actor started");
         while let Some(msg) = self.rx.recv().await {
-            self.handle_message(msg).await;
+            if self.drop_requests {
+                self.logger.debug(&format!("Dropping request: {msg:?}"));
+            } else {
+                self.handle_message(msg).await;
+            }
         }
         self.logger.debug("Api actor exited");
     }
 
     async fn handle_message(&mut self, msg: ApiMessage) {
-        if let Err(err) = self.handle_message_inner(msg).await {
-            if err.status().is_some_and(|s| s.is_success()) {
-                self.error_backoff.reset();
-            } else if err.status() == Some(StatusCode::TOO_MANY_REQUESTS) {
+        match self.handle_message_inner(msg).await {
+            Ok(()) => self.error_backoff.reset(),
+            Err(RequestError::Suspend(err)) => {
                 let backoff = Duration::from_secs(60) + self.error_backoff.next();
                 self.logger.error(&format!(
-                    "Too many requests. Suspending requests for {backoff:?}."
+                    "{}. Suspending requests for {:?}.",
+                    error_report(&err),
+                    backoff
                 ));
-                sleep(backoff).await;
-            } else {
+                if !self.wait(backoff).await {
+                    self.logger
+                        .warn("Stopping while suspended. Dropping remaining requests.");
+                    self.drop_requests = true;
+                }
+            }
+            Err(RequestError::Other(err)) if err.status().is_some_and(|s| s.is_success()) => {
+                self.error_backoff.reset();
+            }
+            Err(RequestError::Other(err)) => {
                 let backoff = self.error_backoff.next();
                 self.logger.error(&format!(
                     "{}. Backing off {:?}.",
                     error_report(&err),
                     backoff
                 ));
-                sleep(backoff).await;
+                self.wait(backoff).await;
             }
-        } else {
-            self.error_backoff.reset();
+        }
+    }
+
+    async fn wait(&self, duration: Duration) -> bool {
+        tokio::select! {
+            _ = sleep(duration) => true,
+            _ = self.shutdown.cancelled() => false,
         }
     }
 
@@ -576,7 +612,7 @@ impl ApiActor {
         }
     }
 
-    async fn handle_message_inner(&mut self, msg: ApiMessage) -> reqwest::Result<()> {
+    async fn handle_message_inner(&mut self, msg: ApiMessage) -> Result<(), RequestError> {
         match msg {
             ApiMessage::CheckKey { callback } => {
                 let url = format!("{}/key", self.endpoint);
@@ -667,17 +703,6 @@ impl ApiActor {
                     StatusCode::NO_CONTENT => callback
                         .send(Acquired::NoContent)
                         .nevermind("callback dropped"),
-                    StatusCode::BAD_REQUEST
-                    | StatusCode::UNAUTHORIZED
-                    | StatusCode::FORBIDDEN
-                    | StatusCode::NOT_ACCEPTABLE => {
-                        let text = res.text().await?;
-                        self.logger
-                            .error(&format!("Server rejected request: {text}"));
-                        callback
-                            .send(Acquired::Rejected)
-                            .nevermind("callback dropped");
-                    }
                     StatusCode::OK | StatusCode::ACCEPTED => {
                         if let Err(Acquired::Accepted(res)) =
                             callback.send(Acquired::Accepted(res.json().await?))
@@ -687,10 +712,34 @@ impl ApiActor {
                             self.abort(res.work.id()).await?;
                         }
                     }
+                    status @ (StatusCode::BAD_REQUEST
+                    | StatusCode::UNAUTHORIZED
+                    | StatusCode::FORBIDDEN
+                    | StatusCode::UNPROCESSABLE_ENTITY) => {
+                        let status_err = res.error_for_status_ref().map(|_| ());
+                        let text = res.text().await.unwrap_or_default();
+                        if let Ok(body) = serde_json::from_str::<ErrorResponseBody>(&text) {
+                            self.logger
+                                .error(&format!("Server rejected request: {}", &body.error));
+                            callback
+                                .send(Acquired::Rejected)
+                                .nevermind("callback dropped");
+                        } else {
+                            self.logger.warn(&format!(
+                                "Unexpected response for acquire: {status}: {:?}",
+                                shorten(&text)
+                            ));
+                            status_err.map_err(RequestError::Suspend)?;
+                        }
+                    }
                     status => {
-                        self.logger
-                            .warn(&format!("Unexpected status for acquire: {status}"));
-                        res.error_for_status()?;
+                        let status_err = res.error_for_status_ref().map(|_| ());
+                        let text = res.text().await.unwrap_or_default();
+                        self.logger.warn(&format!(
+                            "Unexpected response for acquire: {status}: {:?}",
+                            shorten(&text)
+                        ));
+                        status_err?;
                     }
                 }
             }
@@ -769,6 +818,31 @@ impl ApiActor {
 
         Ok(())
     }
+}
+
+enum RequestError {
+    Suspend(reqwest::Error),
+    Other(reqwest::Error),
+}
+
+impl From<reqwest::Error> for RequestError {
+    fn from(err: reqwest::Error) -> RequestError {
+        match err.status() {
+            Some(StatusCode::TOO_MANY_REQUESTS | StatusCode::FORBIDDEN) => {
+                RequestError::Suspend(err)
+            }
+            _ => RequestError::Other(err),
+        }
+    }
+}
+
+fn shorten(text: &str) -> String {
+    let mut chars = text.chars();
+    let mut res: String = chars.by_ref().take(200).collect();
+    if chars.next().is_some() {
+        res.push_str("...");
+    }
+    res
 }
 
 fn error_report(mut err: &dyn Error) -> String {
