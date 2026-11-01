@@ -40,6 +40,7 @@ shakmaty = { version = "0.30", features = ["serde", "variant"] }
 shell-escape = "0.1"
 tempfile = "3"
 tokio = { version = "1", features = ["rt", "macros", "sync", "time", "signal", "process", "io-util"], default-features = false }
+tokio-util = "0.7"
 url = "2"
 serde_repr = "0.1"
 webpki-roots = "1"

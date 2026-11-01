@@ -22,6 +22,7 @@ use tokio::{
     sync::{Mutex, Notify, mpsc, oneshot},
     time::{Instant, sleep},
 };
+use tokio_util::sync::CancellationToken;
 use url::Url;
 
 use crate::{
@@ -47,6 +48,7 @@ pub fn channel(
 ) -> (QueueStub, QueueActor) {
     let (tx, rx) = mpsc::unbounded_channel();
     let interrupt = Arc::new(Notify::new());
+    let shutdown_soon = CancellationToken::new();
     let state = Arc::new(Mutex::new(QueueState::new(
         stats_opt,
         cores,
@@ -55,12 +57,14 @@ pub fn channel(
     let stub = QueueStub {
         tx: Some(tx),
         interrupt: interrupt.clone(),
+        shutdown_soon: shutdown_soon.clone(),
         state: state.clone(),
         api: api.clone(),
     };
     let actor = QueueActor {
         rx,
         interrupt,
+        shutdown_soon,
         state,
         api,
         backlog_opt,
@@ -74,6 +78,7 @@ pub fn channel(
 pub struct QueueStub {
     tx: Option<mpsc::UnboundedSender<QueueMessage>>,
     interrupt: Arc<Notify>,
+    shutdown_soon: CancellationToken,
     state: Arc<Mutex<QueueState>>,
     api: ApiStub,
 }
@@ -100,20 +105,19 @@ impl QueueStub {
         }
     }
 
-    pub async fn shutdown_soon(&mut self) {
-        let mut state = self.state.lock().await;
-        state.shutdown_soon = true;
+    pub fn shutdown_soon(&mut self) {
+        self.shutdown_soon.cancel();
         self.tx.take();
-        self.interrupt.notify_one();
     }
 
     pub async fn shutdown(mut self) {
-        self.shutdown_soon().await;
+        self.shutdown_soon();
 
         let mut state = self.state.lock().await;
         for (k, _) in state.pending.drain() {
             self.api.abort(k);
         }
+        self.api.shutdown();
     }
 
     pub async fn stats(&self) -> (Stats, NpsRecorder) {
@@ -126,7 +130,6 @@ impl QueueStub {
 }
 
 struct QueueState {
-    shutdown_soon: bool,
     cores: NonZeroUsize,
     incoming: VecDeque<Chunk>,
     pending: HashMap<BatchId, PendingBatch>,
@@ -138,7 +141,6 @@ struct QueueState {
 impl QueueState {
     fn new(stats_opt: StatsOpt, cores: NonZeroUsize, logger: Logger) -> QueueState {
         QueueState {
-            shutdown_soon: false,
             cores,
             incoming: VecDeque::new(),
             pending: HashMap::new(),
@@ -336,6 +338,7 @@ enum QueueMessage {
 pub struct QueueActor {
     rx: mpsc::UnboundedReceiver<QueueMessage>,
     interrupt: Arc<Notify>,
+    shutdown_soon: CancellationToken,
     state: Arc<Mutex<QueueState>>,
     api: ApiStub,
     backlog_opt: BacklogOpt,
@@ -433,14 +436,14 @@ impl QueueActor {
     async fn handle_move_submissions(&mut self) {
         loop {
             let next = {
-                let mut state = self.state.lock().await;
-                if state.shutdown_soon {
+                if self.shutdown_soon.is_cancelled() {
                     // Each move submision can come with a follow-up task,
                     // so we might never finish if we keep submitting.
                     // Just drop some. They are short-lived anyway.
                     break;
                 }
 
+                let mut state = self.state.lock().await;
                 state.move_submissions.pop_front()
             };
 
@@ -470,14 +473,17 @@ impl QueueActor {
                             Ok(()) => break,
                             Err(not_done) => not_done,
                         };
-
-                        if state.shutdown_soon {
-                            break;
-                        }
                     }
+
+                    if self.shutdown_soon.is_cancelled() {
+                        break;
+                    }
+
+                    let shutdown_soon = self.shutdown_soon.clone();
 
                     let (wait, query) = tokio::select! {
                         _ = callback.closed() => break,
+                        _ = shutdown_soon.cancelled() => continue,
                         res = self.backlog_wait_time() => res,
                     };
 
@@ -490,12 +496,19 @@ impl QueueActor {
 
                         tokio::select! {
                             _ = callback.closed() => break,
+                            _ = shutdown_soon.cancelled() => continue,
                             _ = self.interrupt.notified() => continue,
                             _ = sleep(wait) => continue,
                         }
                     }
 
-                    match self.api.acquire(query).await {
+                    let acquired = tokio::select! {
+                        _ = callback.closed() => break,
+                        _ = shutdown_soon.cancelled() => continue,
+                        res = self.api.acquire(query) => res,
+                    };
+
+                    match acquired {
                         Some(Acquired::Accepted(body)) => {
                             self.backoff.reset();
                             self.handle_acquired_response_body(body).await;
@@ -506,14 +519,14 @@ impl QueueActor {
                                 .debug(&format!("No job received. Backing off {backoff:?}."));
                             tokio::select! {
                                 _ = callback.closed() => break,
+                                _ = shutdown_soon.cancelled() => (),
                                 _ = self.interrupt.notified() => (),
                                 _ = sleep(backoff) => (),
                             }
                         }
                         Some(Acquired::Rejected) => {
                             self.logger.error("Client update or reconfiguration might be required. Stopping queue.");
-                            let mut state = self.state.lock().await;
-                            state.shutdown_soon = true;
+                            self.shutdown_soon.cancel();
                         }
                         None => (),
                     }
