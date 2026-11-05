@@ -137,7 +137,7 @@ jobs:
           path: fishnet-x86_64-pc-windows-gnu-unsigned.exe
       - run: sccache --stop-server
   macos-x86-64:
-    runs-on: macos-14
+    runs-on: macos-15-intel
     permissions:
       contents: read
     env:
@@ -167,7 +167,7 @@ jobs:
           path: fishnet-x86_64-apple-darwin
       - run: sccache --stop-server
   macos-aarch64:
-    runs-on: macos-14
+    runs-on: macos-15
     permissions:
       contents: read
     env:
