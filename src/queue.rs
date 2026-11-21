@@ -35,7 +35,7 @@ use crate::{
     ipc::{Chunk, ChunkFailed, Position, PositionResponse, Pull},
     logger::{Logger, ProgressAt, QueueStatusBar, short_variant_name},
     stats::{NpsRecorder, Stats, StatsRecorder},
-    util::{NevermindExt as _, RandomizedBackoff, grow_with_and_get_mut},
+    util::{NevermindExt as _, RandomizedBackoff},
 };
 
 pub fn channel(
@@ -166,13 +166,13 @@ impl QueueState {
             Entry::Vacant(entry) => {
                 let progress_at = ProgressAt::from(&batch);
 
-                let mut positions = Vec::with_capacity(batch.chunks.len() * Chunk::MAX_POSITIONS);
+                let mut positions = vec![Some(Skip::Skip); batch.num_positions];
                 for chunk in batch.chunks {
                     for pos in &chunk.positions {
-                        if let Some(position_index) = pos.position_index {
-                            *grow_with_and_get_mut(&mut positions, position_index.0, || {
-                                Some(Skip::Skip)
-                            }) = pos.skip.then_some(Skip::Skip);
+                        if let Some(position_index) = pos.position_index
+                            && !pos.skip
+                        {
+                            positions[position_index.0] = None;
                         }
                     }
                     self.incoming.push_back(chunk);
@@ -555,6 +555,7 @@ pub struct IncomingBatch {
     flavor: EngineFlavor,
     variant: Variant,
     chunks: Vec<Chunk>,
+    num_positions: usize,
     url: Option<Url>,
 }
 
@@ -599,11 +600,18 @@ impl IncomingBatch {
             (moves, outcomes)
         };
 
+        let num_positions = if body.work.is_analysis() {
+            body_moves.len() + 1
+        } else {
+            1
+        };
+
         Ok(IncomingBatch {
             work: body.work.clone(),
             url: url.clone(),
             flavor,
             variant: body.variant,
+            num_positions,
             chunks: match body.work {
                 Work::Move { .. } => {
                     vec![Chunk {
@@ -625,7 +633,6 @@ impl IncomingBatch {
                 Work::Analysis { .. } => {
                     // Iterate forwards to prepare positions.
                     let mut moves = Vec::new();
-                    let num_positions = body_moves.len() + 1;
                     let deadline =
                         Instant::now() + body.work.timeout_per_ply() * num_positions as u32;
                     let mut positions = Vec::with_capacity(num_positions);
